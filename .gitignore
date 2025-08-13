@@ -1,0 +1,18 @@
+# Entorn virtual de Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Fitxers de sistema operatiu
+.DS_Store
+Thumbs.db
+
+# Fitxers de configuració local
+# *.json # Descomenta si vols ignorar tots els JSON per defecte
+!config.json # Manté aquest fitxer si vols que la configuració de l'app es gestioni per Git
+
+# Fitxers temporals/logs
+*.log
+*.tmp
+output_svg/ # Ignora la carpeta de sortida dels SVGs
