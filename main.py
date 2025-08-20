@@ -11,9 +11,11 @@ import tempfile
 import shutil
 import json
 from bs4 import BeautifulSoup
+import ezdxf
+import re
 
-# Per a esqueletització
 from skimage.morphology import skeletonize as sk_skeletonize
+from svg.path import parse_path # Importem parse_path de svg.path
 
 # --- Colors Corporatius emaalquadrat Nexe ---
 COLORS = {
@@ -22,13 +24,13 @@ COLORS = {
     "Nexe_200": "#C4CAC4",
     "Nexe_300": "#A9B2A8",
     "Nexe_400": "#8F9A8D",
-    "Nexe_500": "#80947E", # Color base
+    "Nexe_500": "#80947E",
     "Nexe_600": "#5B6959",
     "Nexe_700": "#485346",
     "Nexe_800": "#343D34",
     "Nexe_900": "#242923",
-    "Black": "#111111", # Per contrast amb fons clars
-    "White": "#FFFFFF"  # Per contrast amb fons foscos
+    "Black": "#111111",
+    "White": "#FFFFFF"
 }
 
 # --- Configuració de Tipografies Corporatives ---
@@ -54,7 +56,6 @@ class Sketch2SVGApp:
         master.grid_columnconfigure(0, weight=1)
         master.grid_columnconfigure(1, weight=3)
 
-        # --- Inicialització de totes les variables de control ---
         self.mode_var = tk.StringVar()
         self.batch_aggressive_var = tk.BooleanVar()
         self.preset_profile_var = tk.StringVar()
@@ -81,10 +82,7 @@ class Sketch2SVGApp:
             "none": None, "Alçada 20mm": ("height", 20), "Alçada 25mm": ("height", 25), "Alçada 30mm": ("height", 30),
             "Amplada 20mm": ("width", 20), "Amplada 25mm": ("width", 25), "Amplada 30mm": ("width", 30)
         }
-        # --- Fi de la inicialització de variables de control ---
 
-
-        # --- Frame esquerre per controls (Panell de configuració) ---
         self.canvas = tk.Canvas(master, bg=COLORS["Nexe_50"], highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
@@ -110,46 +108,37 @@ class Sketch2SVGApp:
         self.control_frame.grid_columnconfigure(2, weight=0, minsize=50)
 
 
-        # Títol del panell de controls
         ttk.Label(self.control_frame, text="Controls de Sketch2SVG", font=FONTS["Title"], foreground=COLORS["Nexe_800"]).grid(row=0, column=0, columnspan=3, pady=(0, 20), sticky="ew")
 
-        # Secció 1: Selecció de carpeta i mode
         self.add_section_title(self.control_frame, "Configuració General", 1)
 
-        # Selector de perfils d'ús (Presets)
         ttk.Label(self.control_frame, text="Perfil d'ús (Preset):").grid(row=2, column=0, sticky="w", pady=(5,0), columnspan=2)
         preset_names = list(config_manager.PRESETS.keys())
         self.preset_profile_var.set(preset_names[0])
         self.preset_profile_menu = ttk.OptionMenu(self.control_frame, self.preset_profile_var, self.preset_profile_var.get(), *preset_names, command=self.apply_preset)
         self.preset_profile_menu.grid(row=2, column=2, sticky="ew", padx=5)
         
-        # Botó "Restaurar configuració del perfil"
         self.reset_profile_button = ttk.Button(self.control_frame, text="Restaurar configuració del perfil", command=self.reset_current_profile_settings)
         self.reset_profile_button.grid(row=3, column=0, columnspan=3, pady=(5, 15), sticky="ew")
 
-        # Botó "Tria carpeta..."
         ttk.Label(self.control_frame, text="Carpeta d'esbossos:").grid(row=4, column=0, sticky="w", pady=(5,0), columnspan=3)
         self.folder_path_label = ttk.Label(self.control_frame, text="Cap carpeta seleccionada", wraplength=350, font=FONTS["UI_Small"], foreground=COLORS["Nexe_400"])
         self.folder_path_label.grid(row=5, column=0, columnspan=3, sticky="ew", padx=5)
         self.select_folder_button = ttk.Button(self.control_frame, text="Tria carpeta...", command=self.select_folder)
         self.select_folder_button.grid(row=6, column=0, columnspan=3, pady=(5, 15), sticky="ew")
 
-        # Mode de vectorització
         ttk.Label(self.control_frame, text="Mode de vectorització:").grid(row=7, column=0, sticky="w", pady=5, columnspan=3)
         self.outline_radio = ttk.Radiobutton(self.control_frame, text="Contorn omplert (per Extrusió 3D / Tall Làser)", variable=self.mode_var, value="outline", command=self.update_parameters_visibility)
         self.outline_radio.grid(row=8, column=0, sticky="w", columnspan=3)
         self.centerline_radio = ttk.Radiobutton(self.control_frame, text="Traç únic (per Gravat Làser / Plotter / Brodat)", variable=self.mode_var, value="centerline", command=self.update_parameters_visibility)
         self.centerline_radio.grid(row=9, column=0, sticky="w", columnspan=3)
 
-        # Checkbox "Batch agressiu"
         self.batch_aggressive_check = ttk.Checkbutton(self.control_frame, text="Mode Batch agressiu (Força paràmetres més durs)", variable=self.batch_aggressive_var, command=self.preview_image)
         self.batch_aggressive_check.grid(row=10, column=0, columnspan=3, sticky="w", pady=(10, 20))
 
-        # --- Panell de Preprocés d'Imatge ---
         self.add_section_title(self.control_frame, "Preprocés d'Imatge (Correcció de la imatge d'entrada)", 11)
         self.create_image_preprocessing_controls(self.control_frame, 12)
 
-        # --- Panell de Paràmetres de Traç Únic (Centerline) ---
         self.centerline_params_frame = ttk.LabelFrame(self.control_frame, text="Paràmetres Traç Únic (Esquelet del dibuix)", padding="10")
         self.centerline_params_frame.grid_columnconfigure(0, weight=2)
         self.centerline_params_frame.grid_columnconfigure(1, weight=3)
@@ -159,16 +148,13 @@ class Sketch2SVGApp:
         self.add_slider(self.centerline_params_frame, "Simplificació línies ε (px):", self.simplification_epsilon_var, 0, 10, 0.1, row=1, tooltip="Simplifica les línies del dibuix eliminant punts redundants. Un valor més alt crea línies més suaus però menys precises. Ajuda a reduir la complexitat de l'SVG.")
         self.add_slider(self.centerline_params_frame, "Gruix de traç (mm):", self.stroke_mm_var, 0.01, 2.0, 0.01, row=2, tooltip="Defineix el gruix de la línia per a la visualització al fitxer SVG final. Aquest valor és només per mostrar el dibuix, no afecta el procés de vectorització.")
 
-        # --- Panell de Unitats SVG ---
         self.add_section_title(self.control_frame, "Unitats i Escalats SVG (Mida del resultat)", 90)
         self.create_svg_units_controls(self.control_frame, 91)
 
-        # --- Secció d'Accions ---
         self.add_section_title(self.control_frame, "Accions", 95)
         self.export_button = ttk.Button(self.control_frame, text="Exporta lot a SVG", command=self.export_batch)
         self.export_button.grid(row=96, column=0, columnspan=3, pady=(5, 10), sticky="ew")
 
-        # --- Frame dret per previsualització i missatges ---
         self.preview_frame = ttk.Frame(master, relief="sunken", padding="10", width=600, height=600, style="Preview.TFrame")
         self.preview_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         self.preview_frame.grid_rowconfigure(0, weight=1)
@@ -177,7 +163,6 @@ class Sketch2SVGApp:
         self.preview_label = ttk.Label(self.preview_frame, text="Selecciona una carpeta amb imatges d'esbossos per començar.", background=COLORS["White"], anchor="center", justify="center")
         self.preview_label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
-        # Barra d'estat
         self.status_bar = ttk.Label(master, text="Estat: Esperant...", relief=tk.SUNKEN, anchor=tk.W, background=COLORS["Nexe_100"], foreground=COLORS["Nexe_800"])
         self.status_bar.grid(row=1, column=0, columnspan=2, sticky="ew")
 
@@ -185,26 +170,21 @@ class Sketch2SVGApp:
         self.current_image_index = -1
         self.display_image_data = None
 
-        # --- Càrrega inicial de la configuració ---
         self._load_initial_config()
     
     def _on_canvas_configure(self, event):
-        """Actualitza la mida de la finestra del frame dins del canvas quan el canvas canvia de mida."""
         self.canvas.itemconfig(self.canvas_frame_id, width=self.canvas.winfo_width())
 
     def _on_frame_configure(self, event):
-        """Actualitza la regió de scroll del canvas quan el frame de controls canvia de mida."""
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def _on_mouse_wheel(self, event):
-        """Gestiona els esdeveniments de la rodeta del ratolí per al scroll."""
         if event.num == 4 or event.delta > 0:
             self.canvas.yview_scroll(-1, "units")
         elif event.num == 5 or event.delta < 0:
             self.canvas.yview_scroll(1, "units")
 
     def _load_initial_config(self):
-        """Carrega la configuració guardada o la per defecte i l'aplica a les variables de control."""
         settings = config_manager.load_config()
         
         self.mode_var.set(settings.get("mode_var", config_manager.DEFAULT_STANDARD_SETTINGS["mode_var"]))
@@ -250,7 +230,6 @@ class Sketch2SVGApp:
             self.apply_preset(self.preset_profile_var.get())
 
     def _get_current_settings(self):
-        """Recull la configuració actual de la UI en un diccionari."""
         settings = {
             "mode_var": self.mode_var.get(),
             "batch_aggressive_var": self.batch_aggressive_var.get(),
@@ -275,7 +254,6 @@ class Sketch2SVGApp:
         return settings
 
     def on_closing(self):
-        """Accions a realitzar en tancar la finestra (guardar configuració)."""
         self.status_bar.config(text="Guardant configuració...")
         self.master.update_idletasks()
         config_manager.save_config(self._get_current_settings())
@@ -283,7 +261,6 @@ class Sketch2SVGApp:
         self.master.after(500, self.master.destroy)
 
     def apply_preset(self, preset_name=None):
-        """Aplica la configuració d'un preset seleccionat al GUI."""
         if preset_name is None:
             preset_name = self.preset_profile_var.get()
 
@@ -315,13 +292,11 @@ class Sketch2SVGApp:
         self.status_bar.config(text=f"Preset '{preset_name}' aplicat.")
 
     def reset_current_profile_settings(self):
-        """Restaurar els paràmetres de preprocessament i vectorització al preset actual."""
         current_preset_name = self.preset_profile_var.get()
         self.apply_preset(current_preset_name)
 
 
     def add_section_title(self, parent_frame, title_text, row):
-        """Afegeix un títol de secció amb un separador."""
         ttk.Label(parent_frame, text=title_text, font=FONTS["SectionTitle"], foreground=COLORS["Nexe_700"]).grid(
             row=row, column=0, columnspan=3, sticky="w", pady=(15, 0)
         )
@@ -332,7 +307,6 @@ class Sketch2SVGApp:
 
 
     def add_slider(self, parent_frame, label_text, var_obj, from_, to, resolution, row, tooltip=""):
-        """Afegeix un label, slider i entrada per un paràmetre."""
         ttk.Label(parent_frame, text=label_text).grid(row=row, column=0, sticky="w", pady=2, padx=(0, 5))
         
         vcmd = (parent_frame.register(self._validate_entry), '%P', '%V', str(from_), str(to), var_obj._name)
@@ -348,13 +322,6 @@ class Sketch2SVGApp:
             self.create_tooltip(entry, tooltip)
 
     def _validate_entry(self, P, V, from_val_str, to_val_str, var_name):
-        """
-        Valida que l'entrada sigui un número i dins d'un rang specificat.
-        P: el text resultant al camp Entry si la modificació és permesa
-        V: raó de la validació (focusin, focusout, key, etc.)
-        from_val_str, to_val_str: límits del rang com a strings
-        var_name: nom de la variable de control (per exemple, 'threshold_var')
-        """
         from_val = float(from_val_str)
         to_val = float(to_val_str)
 
@@ -386,12 +353,10 @@ class Sketch2SVGApp:
 
 
     def create_tooltip(self, widget, text):
-        """Crea un tooltip per a un widget."""
         toolTip = ToolTip(widget, text)
 
 
     def create_image_preprocessing_controls(self, parent_frame, start_row):
-        """Crea els controls per al preprocessament d'imatge, reordenats."""
         row_offset = 0
 
         self.add_slider(parent_frame, "Correcció il·luminació (nitidesa fons):", self.illum_sigma_var, 1, 200, 1, start_row + row_offset, tooltip="Ajusta la suavitat amb què es calcula el fons de la imatge. Valors alts fan que el fons sigui més suau, ajudant a corregir il·luminació irregular i a fer el traçat més net.")
@@ -427,7 +392,6 @@ class Sketch2SVGApp:
 
 
     def create_svg_units_controls(self, parent_frame, start_row):
-        """Crea els controls per a les unitats SVG."""
         self.add_slider(parent_frame, "Resolució DPI (imatge original):", self.dpi_var, 50, 200, 1, start_row, tooltip="Píxels per polzada (Dots Per Inch) de la imatge original. Afecta l'escala final de l'SVG: una DPI més alta implica un dibuix més gran en mil·límetres.")
 
         ttk.Label(parent_frame, text="Mida final (escala):").grid(row=start_row+1, column=0, sticky="w", padx=(0, 5))
@@ -435,17 +399,15 @@ class Sketch2SVGApp:
         self.scale_preset_menu.grid(row=start_row+1, column=1, columnspan=2, sticky="ew", padx=5)
 
 
-    def update_parameters_visibility(self):
-        """Actualitza la visibilitat dels controls segons el mode seleccionat."""
+    def update_parameters_visibility(self, event=None):
         if self.mode_var.get() == "centerline":
             self.centerline_params_frame.grid(row=80, column=0, columnspan=3, sticky="ew", padx=5, pady=10)
         else:
             self.centerline_params_frame.grid_forget()
-        self.preview_image() # Update preview when mode changes
+        self.preview_image()
 
 
     def select_folder(self):
-        """Obre un diàleg per seleccionar una carpeta amb imatges."""
         folder_selected = filedialog.askdirectory()
         if folder_selected:
             self.folder_path_label.config(text=folder_selected)
@@ -463,7 +425,6 @@ class Sketch2SVGApp:
 
 
     def _process_image_for_preview(self, image_path):
-        """Processa una imatge amb els paràmetres de preprocessament i la retorna binaritzada."""
         try:
             img_bgr = cv2.imread(image_path)
             if img_bgr is None:
@@ -523,7 +484,6 @@ class Sketch2SVGApp:
 
 
     def _update_preview_display(self, processed_img_np, image_path):
-        """Actualitza la visualització de la previsualització al fil principal."""
         if processed_img_np is not None:
             img_pil = Image.fromarray(processed_img_np)
 
@@ -553,7 +513,6 @@ class Sketch2SVGApp:
             self.display_image_data = None
 
     def preview_image(self):
-        """Inicia el processament de la imatge en un fil separat i actualitza la UI."""
         if not self.image_files or self.current_image_index == -1:
             self.status_bar.config(text="No hi ha imatge per previsualitzar. Selecciona una carpeta.")
             self.preview_label.config(image='', text="Selecciona una carpeta amb imatges d'esbossos per començar.")
@@ -569,17 +528,10 @@ class Sketch2SVGApp:
         thread.start()
 
     def _process_and_update_thread(self, image_path):
-        """Funció que s'executa en un fil separat per processar la imatge."""
         processed_img_np = self._process_image_for_preview(image_path)
         self.master.after(0, self._update_preview_display, processed_img_np, image_path)
 
     def _vectorize_outline_potrace(self, binarized_image_np, output_svg_path, original_image_name):
-        """
-        Vectoritza una imatge binaritzada a SVG utilitzant Potrace.
-        binarized_image_np: Imatge binaritzada (NumPy array, 0 o 255).
-        output_svg_path: Ruta completa del fitxer SVG de sortida.
-        original_image_name: Nom de la imatge original per als missatges d'estat.
-        """
         self.status_bar.config(text=f"Vectoritzant {original_image_name} amb Potrace...")
         
         try:
@@ -587,11 +539,7 @@ class Sketch2SVGApp:
                 temp_pbm_path = temp_pbm_file.name
                 
                 img_for_potrace = binarized_image_np
-                # Potrace vectoritza els píxels negres. Si el traç és blanc, l'hem d'invertir.
-                # La nostra binarització genera 0 (negre) per traç i 255 (blanc) per fons, si invert_var és False.
-                # Si invert_var és True, el traç és 255 (blanc) i el fons 0 (negre).
-                # Per a Potrace, el traç ha de ser 0.
-                if np.mean(img_for_potrace) > 127: # Si la majoria és blanc (traç blanc, fons negre)
+                if np.mean(img_for_potrace) > 127:
                     img_for_potrace = cv2.bitwise_not(img_for_potrace)
 
                 pil_img = Image.fromarray(img_for_potrace)
@@ -600,7 +548,7 @@ class Sketch2SVGApp:
             potrace_command = [
                 "potrace",
                 temp_pbm_path,
-                "-s", # Smooth
+                "-s",
                 "-o", output_svg_path
             ]
             
@@ -608,70 +556,72 @@ class Sketch2SVGApp:
             
             if result.returncode == 0:
                 self.status_bar.config(text=f"Vectorització de {original_image_name} completada amb èxit.")
-                return True
+                
+                with open(output_svg_path, 'r') as f:
+                    svg_content = f.read()
+                soup = BeautifulSoup(svg_content, 'xml')
+                paths_svg = []
+                for path_tag in soup.find_all('path'):
+                    d_attr = path_tag.get('d')
+                    if d_attr:
+                        # Utilitzem svg.path per parsejar l'atribut 'd' de forma robusta
+                        parsed_path = parse_path(d_attr)
+                        current_path_points = []
+                        for segment in parsed_path:
+                            # Per cada segment (Line, CubicBezier, etc.), obtenim els punts
+                            # Simplifiquem a punts finals de cada segment per a DXF
+                            if hasattr(segment, 'start'): # Tots els segments tenen start i end
+                                current_path_points.append((segment.start.real, segment.start.imag))
+                            if hasattr(segment, 'end'):
+                                current_path_points.append((segment.end.real, segment.end.imag))
+                        
+                        # Eliminar punts duplicats consecutius
+                        unique_points = []
+                        if current_path_points:
+                            unique_points.append(current_path_points[0])
+                            for i in range(1, len(current_path_points)):
+                                if current_path_points[i] != current_path_points[i-1]:
+                                    unique_points.append(current_path_points[i])
+
+                        if unique_points:
+                            paths_svg.append(unique_points)
+                            print(f"DEBUG Potrace: Parsed path with {len(unique_points)} unique points.")
+                        else:
+                            print(f"DEBUG Potrace: Path had d_attr but no valid unique points parsed.")
+                print(f"DEBUG Potrace: Final paths_svg count: {len(paths_svg)}")
+                return True, paths_svg
             else:
                 self.status_bar.config(text=f"Error en vectoritzar {original_image_name} amb Potrace: {result.stderr}")
-                return False
+                return False, []
 
         except FileNotFoundError:
             self.status_bar.config(text="Error: Potrace no trobat. Assegura't que està instal·lat i al PATH.")
-            return False
+            return False, []
         except subprocess.CalledProcessError as e:
             self.status_bar.config(text=f"Error de Potrace per {original_image_name}: {e.stderr.strip()}")
-            return False
+            return False, []
         except Exception as e:
             self.status_bar.config(text=f"Error inesperat en vectoritzar {original_image_name}: {e}")
-            return False
+            return False, []
         finally:
             if 'temp_pbm_path' in locals() and os.path.exists(temp_pbm_path):
                 os.remove(temp_pbm_path)
 
     def _vectorize_centerline(self, binarized_image_np, output_svg_path, original_image_name):
-        """
-        Vectoritza una imatge binaritzada a SVG amb traç únic (centerline) utilitzant esqueletització i seguiment de línies.
-        """
         self.status_bar.config(text=f"Vectoritzant {original_image_name} amb traç únic (centerline)...")
 
         try:
-            # 1. Preparar la imatge per a esqueletització
-            # sk_skeletonize espera una imatge booleana (True per foreground, False per background)
-            # La nostra imatge binaritzada té 0 (negre) o 255 (blanc).
-            # Si el traç és negre (0), volem (img == 0). Si el traç és blanc (255), volem (img == 255).
-            # La funció _process_image_for_preview ja ens dóna la imatge amb el traç correcte (0 o 255).
-            # Per a skeletonize, el traç ha de ser el valor True.
-            
-            # Si el traç és 0 (negre), llavors `binarized_image_np == 0` serà True per al traç.
-            # Si el traç és 255 (blanc), llavors `binarized_image_np == 255` serà True per al traç.
-            
-            # La manera més robusta és assegurar que el traç sigui True i el fons False.
-            # Si la imatge binaritzada té el traç negre (0), la convertim a booleana (0 -> True, 255 -> False).
-            # Si la imatge binaritzada té el traç blanc (255), la convertim a booleana (255 -> True, 0 -> False).
-            
-            # La funció _process_image_for_preview ja gestiona la inversió.
-            # Si invert_var és True, el traç és 255 i el fons 0.
-            # Si invert_var és False, el traç és 0 i el fons 255.
-            
-            # sk_skeletonize espera True per al foreground (traç).
-            # Si el traç és negre (0), llavors (binarized_image_np == 0) és True.
-            # Si el traç és blanc (255), llavors (binarized_image_np == 255) és True.
-            
-            # Per tant, la imatge per a skeletonize serà:
-            if self.invert_var.get(): # Si l'usuari ha demanat invertir, el traç és blanc (255)
+            if self.invert_var.get():
                 skel_image = (binarized_image_np == 255)
-            else: # El traç és negre (0)
+            else:
                 skel_image = (binarized_image_np == 0)
 
             skeleton = sk_skeletonize(skel_image)
             
-            # Convertim l'esquelet a un array de 0 i 255 per a visualització/processament amb OpenCV
-            skeleton_np = (skeleton * 255).astype(np.uint8)
-
-            # 2. Seguiment de línies (algorisme simple)
             paths = []
-            visited = np.zeros_like(skeleton, dtype=bool) # Matriu per marcar píxels visitats
+            visited = np.zeros_like(skeleton, dtype=bool)
             
-            # Trobar tots els píxels de l'esquelet
-            skel_points = np.argwhere(skeleton) # Obté les coordenades (row, col) dels píxels True
+            skel_points = np.argwhere(skeleton)
 
             for r, c in skel_points:
                 if not visited[r, c]:
@@ -681,9 +631,8 @@ class Sketch2SVGApp:
 
                     while queue:
                         curr_r, curr_c = queue.pop(0)
-                        current_path.append((curr_c, curr_r)) # Guardem com (x, y) per a SVG
+                        current_path.append((curr_c, curr_r))
 
-                        # Veïns 8-connectats
                         neighbors = []
                         for dr in [-1, 0, 1]:
                             for dc in [-1, 0, 1]:
@@ -693,29 +642,20 @@ class Sketch2SVGApp:
                                    skeleton[nr, nc] and not visited[nr, nc]:
                                     neighbors.append((nr, nc))
                         
-                        # Prioritzem la continuïtat: si hi ha un sol veí, el seguim
                         if len(neighbors) == 1:
                             next_r, next_c = neighbors[0]
                             queue.append((next_r, next_c))
                             visited[next_r, next_c] = True
-                        else: # Si hi ha més d'un veí (bifurcació) o cap, considerem el camí acabat aquí
-                              # i afegim els veïns no visitats a la cua per iniciar nous camins.
-                            for nr, nc in neighbors:
-                                if not visited[nr, nc]: # Només si no s'ha visitat ja des d'un altre camí
-                                    # Afegim-los per a que siguin l'inici d'un nou camí si no ho són ja
-                                    # En una implementació més avançada, aquí es gestionarien les bifurcacions
-                                    # i la unió de segments. Per ara, cada bifurcació pot iniciar un nou camí.
-                                    pass # Ja es gestionaran amb el bucle principal skel_points
+                        else:
+                            pass
 
-                    if len(current_path) > 1: # Si el camí té més d'un punt
+                    if len(current_path) > 1:
                         paths.append(current_path)
 
-            # 3. Poda de segments curts
             prune_short = self.prune_short_var.get()
             if prune_short > 0:
                 filtered_paths = []
                 for path in paths:
-                    # Calculem la longitud del camí (distància euclidiana total)
                     length = 0
                     for i in range(len(path) - 1):
                         p1 = np.array(path[i])
@@ -726,20 +666,18 @@ class Sketch2SVGApp:
                 paths = filtered_paths
 
 
-            # 4. Simplificació Ramer-Douglas-Peucker (RDP)
             epsilon = self.simplification_epsilon_var.get()
             if epsilon > 0:
                 simplified_paths = []
                 for path in paths:
-                    if len(path) > 2: # RDP necessita almenys 3 punts
+                    if len(path) > 2:
                         simplified_path = self._ramer_douglas_peucker(path, epsilon)
                         simplified_paths.append(simplified_path)
                     else:
-                        simplified_paths.append(path) # Camins curts no es simplifiquen
+                        simplified_paths.append(path)
                 paths = simplified_paths
 
-            # 5. Generar SVG
-            img_height, img_width = binarized_image_np.shape # Dimensions originals de la imatge binaritzada
+            img_height, img_width = binarized_image_np.shape
             stroke_width_mm = self.stroke_mm_var.get()
             dpi = self.dpi_var.get()
             scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get(), (None, None))
@@ -751,47 +689,39 @@ class Sketch2SVGApp:
             elif scale_preset_tuple and scale_preset_tuple[0] == "height":
                 target_height_mm = scale_preset_tuple[1]
 
-            # El color del traç per a Làser/Plotter/Brodat
-            stroke_color = "#0000FF" # Blau per defecte per a Score/Plotter
-            if self.preset_profile_var.get() == "Làser - Tall (CUT)":
-                stroke_color = "#FF0000" # Vermell per a CUT
-            # Podríem afegir més lògica de color per a brodat si cal
+            stroke_color = "#0000FF"
 
             self._create_svg_from_paths(output_svg_path, paths, img_width, img_height, dpi, stroke_width_mm, stroke_color, target_width_mm, target_height_mm)
             
             self.status_bar.config(text=f"Vectorització de {original_image_name} amb traç únic completada amb èxit.")
-            return True
+            return True, paths
 
         except Exception as e:
             self.status_bar.config(text=f"Error en vectoritzar {original_image_name} amb traç únic: {e}")
-            print(f"Error centerline vectorization for {original_image_name}: {e}")
-            return False
+            return False, []
 
     def _create_svg_from_paths(self, output_svg_path, paths, img_width_px, img_height_px, dpi, stroke_width_mm, stroke_color, target_width_mm=None, target_height_mm=None):
-        """
-        Genera un fitxer SVG a partir d'una llista de camins (polilínies).
-        """
         mm_per_px = 25.4 / dpi
 
-        # Calcular les dimensions finals en mm
-        final_width_mm = img_width_px * mm_per_px
-        final_height_mm = img_height_px * mm_per_px
+        final_width_px = img_width_px
+        final_height_px = img_height_px
 
-        # Aplicar escalat si s'especifica un límit (width_mm o height_mm)
         if target_width_mm is not None and img_width_px > 0:
             scale_factor = (target_width_mm / mm_per_px) / img_width_px
-            final_width_mm = target_width_mm
-            final_height_mm = img_height_px * mm_per_px * scale_factor
+            final_width_px = img_width_px * scale_factor
+            final_height_px = img_height_px * scale_factor
         elif target_height_mm is not None and img_height_px > 0:
             scale_factor = (target_height_mm / mm_per_px) / img_height_px
-            final_height_mm = target_height_mm
-            final_width_mm = img_width_px * mm_per_px * scale_factor
+            final_width_px = img_width_px * scale_factor
+            final_height_px = img_height_px * scale_factor
         
-        # Format SVG inicial
+        svg_width_mm = final_width_px * mm_per_px
+        svg_height_mm = final_height_px * mm_per_px
+
         svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   width="{final_width_mm:.2f}mm"
-   height="{final_height_mm:.2f}mm"
+   width="{svg_width_mm:.2f}mm"
+   height="{svg_height_mm:.2f}mm"
    viewBox="0 0 {img_width_px} {img_height_px}"
    version="1.1"
    xmlns="http://www.w3.org/2000/svg"
@@ -801,11 +731,12 @@ class Sketch2SVGApp:
      inkscape:groupmode="layer"
      id="layer1">
 """
-        # Afegir cada camí com una polilínia
         for path_points in paths:
-            # Convertir llista de tuples (x, y) a string "x1,y1 x2,y2 ..."
             points_str = " ".join([f"{x},{y}" for x, y in path_points])
-            svg_content += f'    <polyline points="{points_str}" style="fill:none;stroke:{stroke_color};stroke-width:{stroke_width_mm:.3f}mm" />\n'
+            if stroke_color == "#000000" or stroke_color == "black":
+                 svg_content += f'    <path d="M{points_str}Z" style="fill:{stroke_color};stroke:none;" />\n'
+            else:
+                 svg_content += f'    <polyline points="{points_str}" style="fill:none;stroke:{stroke_color};stroke-width:{stroke_width_mm:.3f}mm" />\n'
         
         svg_content += """  </g>\n</svg>"""
 
@@ -813,30 +744,20 @@ class Sketch2SVGApp:
             f.write(svg_content)
 
     def _ramer_douglas_peucker(self, points, epsilon):
-        """
-        Implementació de l'algorisme Ramer-Douglas-Peucker per a la simplificació de polilínies.
-        points: Llista de tuples (x, y) que representen la polilínia.
-        epsilon: Llindar de tolerància.
-        """
         if len(points) < 3:
             return points
 
-        # Trobar el punt amb la distància màxima
         dmax = 0.0
         index = 0
         end = len(points) - 1
         line_segment = np.array(points[end]) - np.array(points[0])
-        line_length_sq = np.dot(line_segment, line_segment) # Squared length
+        line_length_sq = np.dot(line_segment, line_segment)
 
         for i in range(1, end):
-            # Distància perpendicular d'un punt a un segment de línia
-            # https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line#Line_defined_by_two_points
-            
-            # Vector del punt inicial al punt actual
             point_vector = np.array(points[i]) - np.array(points[0])
             
-            if line_length_sq == 0: # Cas de segment de longitud zero (punts inicial i final són el mateix)
-                d = np.linalg.norm(point_vector) # Distància del punt al punt inicial
+            if line_length_sq == 0:
+                d = np.linalg.norm(point_vector)
             else:
                 t = np.dot(point_vector, line_segment) / line_length_sq
                 if t < 0.0:
@@ -852,12 +773,10 @@ class Sketch2SVGApp:
                 index = i
                 dmax = d
 
-        # Si la distància màxima és major que epsilon, recursivament simplificar
         if dmax > epsilon:
             rec_results1 = self._ramer_douglas_peucker(points[0:index+1], epsilon)
             rec_results2 = self._ramer_douglas_peucker(points[index:end+1], epsilon)
 
-            # Reconstruir el resultat (eliminant el punt duplicat a la unió)
             result_points = rec_results1[:-1] + rec_results2
         else:
             result_points = [points[0], points[end]]
@@ -865,13 +784,45 @@ class Sketch2SVGApp:
         return result_points
 
 
+    def _export_dxf_from_svg_paths(self, output_dxf_path, paths, img_width_px, img_height_px, dpi, layer_name, dxf_color):
+        self.status_bar.config(text=f"Exportant DXF a {os.path.basename(output_dxf_path)}...")
+        print(f"DEBUG: Intentant exportar DXF a {output_dxf_path} per a la capa {layer_name} amb color {dxf_color}.")
+        print(f"DEBUG: Número de camins per DXF: {len(paths)}")
+
+        try:
+            doc = ezdxf.new('R2010')
+            msp = doc.modelspace()
+
+            doc.layers.new(layer_name, dxfattribs={'color': dxf_color})
+
+            mm_per_px = 25.4 / dpi
+
+            for path_points in paths:
+                dxf_points = [(p[0] * mm_per_px, p[1] * mm_per_px) for p in path_points]
+
+                if len(dxf_points) > 1:
+                    is_closed = (len(dxf_points) > 2 and dxf_points[0] == dxf_points[-1])
+                    
+                    if is_closed:
+                        msp.add_lwpolyline(dxf_points, dxfattribs={'layer': layer_name, 'closed': True})
+                        print(f"DEBUG: Afegit LWPOLYLINE tancada amb {len(dxf_points)} punts.")
+                    else:
+                        msp.add_lwpolyline(dxf_points, dxfattribs={'layer': layer_name})
+                        print(f"DEBUG: Afegit LWPOLYLINE oberta amb {len(dxf_points)} punts.")
+                else:
+                    print(f"DEBUG: Camí massa curt per a DXF: {len(dxf_points)} punts.")
+                        
+            doc.saveas(output_dxf_path)
+            self.status_bar.config(text=f"DXF de {os.path.basename(output_dxf_path)} generat amb èxit.")
+            print(f"DEBUG: DXF guardat amb èxit a {output_dxf_path}")
+            return True
+        except Exception as e:
+            self.status_bar.config(text=f"Error en exportar DXF de {os.path.basename(output_dxf_path)}: {e}")
+            print(f"DEBUG: ERROR en exportar DXF: {e}")
+            return False
+
+
     def _scale_svg(self, svg_path, target_width_mm, target_height_mm, dpi):
-        """
-        Ajusta els atributs width, height i viewBox d'un SVG per escalar-lo a mm.
-        svg_path: Ruta del fitxer SVG.
-        target_width_mm, target_height_mm: Dimensions desitjades en mm (si s'aplica preset d'escala).
-        dpi: Resolució en DPI per a la conversió px a mm.
-        """
         try:
             with open(svg_path, 'r') as f:
                 svg_content = f.read()
@@ -885,13 +836,11 @@ class Sketch2SVGApp:
             original_width_px = None
             original_height_px = None
             
-            # Intentem obtenir les dimensions del viewBox primer
             if 'viewBox' in svg_tag.attrs:
                 _, _, original_width_px_str, original_height_px_str = svg_tag['viewBox'].split()
                 original_width_px = float(original_width_px_str)
                 original_height_px = float(original_height_px_str)
             else:
-                # Si no hi ha viewBox, intentem obtenir-ho de width/height i assumim px
                 if 'width' in svg_tag.attrs and svg_tag['width'].endswith('px'):
                     original_width_px = float(svg_tag['width'][:-2])
                 if 'height' in svg_tag.attrs and svg_tag['height'].endswith('px'):
@@ -903,11 +852,9 @@ class Sketch2SVGApp:
 
             mm_per_px = 25.4 / dpi
 
-            # Calcular les dimensions finals en mm segons el DPI
             final_width_mm = original_width_px * mm_per_px
             final_height_mm = original_height_px * mm_per_px
 
-            # Ajustar si hi ha un preset d'escala
             if target_width_mm is not None:
                 scale_factor = target_width_mm / final_width_mm
                 final_width_mm = target_width_mm
@@ -917,11 +864,9 @@ class Sketch2SVGApp:
                 final_height_mm = target_height_mm
                 final_width_mm *= scale_factor
             
-            # Actualitzar els atributs width i height de l'SVG
             svg_tag['width'] = f"{final_width_mm:.2f}mm"
             svg_tag['height'] = f"{final_height_mm:.2f}mm"
             
-            # Assegurar que hi ha un viewBox
             if 'viewBox' not in svg_tag.attrs:
                 svg_tag['viewBox'] = f"0 0 {original_width_px} {original_height_px}"
 
@@ -935,7 +880,6 @@ class Sketch2SVGApp:
 
 
     def export_batch(self):
-        """Inicia el procés d'exportació en lot de totes les imatges."""
         if not self.image_files:
             self.status_bar.config(text="Error: No hi ha imatges per exportar. Selecciona una carpeta.")
             return
@@ -956,7 +900,6 @@ class Sketch2SVGApp:
         thread.start()
 
     def _export_batch_thread(self, output_dir):
-        """Funció que s'executa en un fil separat per processar el lot."""
         results = []
         errors = []
         processed_count = 0
@@ -966,7 +909,7 @@ class Sketch2SVGApp:
             original_image_name = os.path.basename(image_path)
             base_name, _ = os.path.splitext(original_image_name)
             
-            self.master.after(0, self.status_bar.config, f"Processant {original_image_name} ({i+1}/{total_files})...")
+            self.master.after(0, lambda name=original_image_name, idx=i, total=total_files: self.status_bar.config(text=f"Processant {name} ({idx+1}/{total})..."))
 
             try:
                 processed_img_np = self._process_image_for_preview(image_path)
@@ -977,14 +920,16 @@ class Sketch2SVGApp:
                 mode = self.mode_var.get()
                 output_svg_filename = f"{base_name}__{mode}.svg"
                 output_svg_path = os.path.join(output_dir, output_svg_filename)
-
-                success = False
-                if mode == "outline":
-                    success = self._vectorize_outline_potrace(processed_img_np, output_svg_path, original_image_name)
-                elif mode == "centerline":
-                    success = self._vectorize_centerline(processed_img_np, output_svg_path, original_image_name)
                 
-                if success:
+                vectorized_paths = []
+                success_svg = False
+
+                if mode == "outline":
+                    success_svg, vectorized_paths = self._vectorize_outline_potrace(processed_img_np, output_svg_path, original_image_name)
+                elif mode == "centerline":
+                    success_svg, vectorized_paths = self._vectorize_centerline(processed_img_np, output_svg_path, original_image_name)
+                
+                if success_svg:
                     dpi = self.dpi_var.get()
                     scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get(), (None, None))
                     
@@ -997,6 +942,35 @@ class Sketch2SVGApp:
 
                     self._scale_svg(output_svg_path, target_width_mm, target_height_mm, dpi)
                     
+                    current_preset = self.preset_profile_var.get()
+                    export_dxf = False
+                    dxf_layer = ""
+                    dxf_color = 0
+
+                    print(f"DEBUG: Preset actual: '{current_preset}'")
+                    if current_preset == "Làser - Tall (CUT)":
+                        export_dxf = True
+                        dxf_layer = "CUT"
+                        dxf_color = 1
+                        print("DEBUG: Preset és 'Làser - Tall (CUT)', export_dxf = True")
+                    elif current_preset == "Làser - Marcat / Gravat (SCORE)":
+                        export_dxf = True
+                        dxf_layer = "SCORE"
+                        dxf_color = 5
+                        print("DEBUG: Preset és 'Làser - Marcat / Gravat (SCORE)', export_dxf = True")
+                    else:
+                        print("DEBUG: Preset no és de làser, no s'exportarà DXF.")
+
+
+                    if export_dxf and vectorized_paths:
+                        output_dxf_filename = f"{base_name}__{mode}.dxf"
+                        output_dxf_path = os.path.join(output_dir, output_dxf_filename)
+                        print(f"DEBUG: Condició DXF complerta: export_dxf={export_dxf}, vectorized_paths té {len(vectorized_paths)} camins.")
+                        self._export_dxf_from_svg_paths(output_dxf_path, vectorized_paths, processed_img_np.shape[1], processed_img_np.shape[0], dpi, dxf_layer, dxf_color)
+                    elif export_dxf and not vectorized_paths:
+                        print(f"DEBUG: Condició DXF no complerta: export_dxf={export_dxf}, vectorized_paths està buit.")
+                        errors.append(f"No s'ha pogut generar DXF per {original_image_name}: No hi ha camins vectoritzats.")
+                    
                     results.append({"original": original_image_name, "output_svg": output_svg_path, "status": "OK"})
                     processed_count += 1
                 else:
@@ -1004,12 +978,11 @@ class Sketch2SVGApp:
 
             except Exception as e:
                 errors.append(f"Error crític processant {original_image_name}: {e}")
-                self.master.after(0, self.status_bar.config, f"Error crític processant {original_image_name}: {e}")
+                self.master.after(0, lambda name=original_image_name, err=e: self.status_bar.config(text=f"Error crític processant {name}: {err}"))
 
         self.master.after(0, self._finish_batch_export, processed_count, total_files, output_dir, results, errors)
 
     def _finish_batch_export(self, processed_count, total_files, output_dir, results, errors):
-        """Finalitza el procés d'exportació en lot i actualitza la UI."""
         self.export_button.config(state=tk.NORMAL)
 
         manifest_path = os.path.join(output_dir, "manifest.json")
@@ -1039,7 +1012,6 @@ class Sketch2SVGApp:
         #     subprocess.Popen(["open", output_dir])
 
 
-# Classe ToolTip (per als tooltips d'ajuda)
 class ToolTip:
     def __init__(self, widget, text):
         self.widget = widget
