@@ -6,9 +6,14 @@ import cv2
 import numpy as np
 import config_manager
 import threading
-import subprocess # Per executar Potrace
-import tempfile   # Per crear fitxers temporals
-import shutil     # Per netejar fitxers/carpetes
+import subprocess
+import tempfile
+import shutil
+import json
+from bs4 import BeautifulSoup
+
+# Per a esqueletització
+from skimage.morphology import skeletonize as sk_skeletonize
 
 # --- Colors Corporatius emaalquadrat Nexe ---
 COLORS = {
@@ -362,7 +367,7 @@ class Sketch2SVGApp:
                 val = float(P)
 
                 if not (from_val <= val <= to_val):
-                    self.status_bar.config(text=f"Error: El valor ha de ser entre {from_val_str} i {to_val_str} per a '{var_name.replace('_var', '')}'.")
+                    self.status_bar.config(text=f"Error: El valor ha d'estar entre {from_val_str} i {to_val_str} per a '{var_name.replace('_var', '')}'.")
                     return False
                 
                 var_obj = getattr(self, var_name)
@@ -578,51 +583,20 @@ class Sketch2SVGApp:
         self.status_bar.config(text=f"Vectoritzant {original_image_name} amb Potrace...")
         
         try:
-            # Potrace necessita un fitxer PBM/PGM d'entrada.
-            # Creem un fitxer temporal amb NamedTemporaryFile per gestionar-lo automàticament.
             with tempfile.NamedTemporaryFile(suffix=".pbm", delete=False) as temp_pbm_file:
                 temp_pbm_path = temp_pbm_file.name
-                # Guardem la imatge binaritzada com a PBM
-                # Invertim els colors per a Potrace: 0 (negre) es converteix en 1 (traç), 255 (blanc) en 0 (fons)
-                # Potrace per defecte vectoritza el negre.
-                # Però el nostre _process_image_for_preview genera traç blanc sobre fons negre si invert_var és True,
-                # o traç negre sobre fons blanc si invert_var és False.
-                # Si volem que Potrace vectoritzi el traç, hem d'assegurar que el traç sigui negre (0) i el fons blanc (255)
-                # en el PBM que li passem.
                 
-                # Convertim a format PBM (P1) amb Pillow
-                # Pillow Image.fromarray(np_array) crea una imatge amb 0=negre, 255=blanc
-                # Per a Potrace, el negre és el que es vectoritza.
-                # Si la nostra imatge binaritzada té el traç negre (0) i fons blanc (255), ja està bé.
-                # Si té traç blanc (255) i fons negre (0), l'hem d'invertir abans de guardar a PBM.
-                
-                # Comprovem si la imatge binaritzada té el traç negre (0) o blanc (255)
-                # Assumim que el fons és majoritariament blanc (255) i el traç negre (0) per Potrace
-                # Si la imatge ja ha estat invertida pel preprocessament i el traç és blanc, Potrace no el veurà.
-                # Per tant, si el traç és blanc (255) i el fons negre (0) a la imatge binaritzada, la invertim per Potrace.
-                # La manera més senzilla és assegurar que el traç sigui 0 i el fons 255.
-                
-                # Potrace vectoritza els píxels negres (0).
-                # La nostra imatge binaritzada té 0 per negre i 255 per blanc.
-                # Si invert_var és True, el traç és 255 i el fons 0.
-                # Si invert_var és False, el traç és 0 i el fons 255.
-                # Potrace necessita el traç com a negre (0).
-                
-                # Per tant, si self.invert_var.get() és True, la imatge binaritzada té el traç blanc.
-                # Hem d'invertir-la per a Potrace.
                 img_for_potrace = binarized_image_np
-                if self.invert_var.get(): # Si l'usuari ha demanat invertir, el traç és blanc. Potrace necessita negre.
-                    img_for_potrace = cv2.bitwise_not(binarized_image_np)
+                # Potrace vectoritza els píxels negres. Si el traç és blanc, l'hem d'invertir.
+                # La nostra binarització genera 0 (negre) per traç i 255 (blanc) per fons, si invert_var és False.
+                # Si invert_var és True, el traç és 255 (blanc) i el fons 0 (negre).
+                # Per a Potrace, el traç ha de ser 0.
+                if np.mean(img_for_potrace) > 127: # Si la majoria és blanc (traç blanc, fons negre)
+                    img_for_potrace = cv2.bitwise_not(img_for_potrace)
 
                 pil_img = Image.fromarray(img_for_potrace)
                 pil_img.save(temp_pbm_path)
 
-            # Ordre de Potrace
-            # potrace -s -o output.svg input.pbm
-            # -s: per generar un SVG més suau (sense pixels)
-            # -z group: per agrupar camins (útil per Fusion 360)
-            # -u 1: unitats per píxel (per defecte Potrace utilitza 1 unitat per píxel)
-            # La resolució i escalat en mm es gestionaran després amb els atributs de l'SVG.
             potrace_command = [
                 "potrace",
                 temp_pbm_path,
@@ -630,57 +604,288 @@ class Sketch2SVGApp:
                 "-o", output_svg_path
             ]
             
-            # Executar Potrace
             result = subprocess.run(potrace_command, capture_output=True, text=True, check=True)
             
             if result.returncode == 0:
                 self.status_bar.config(text=f"Vectorització de {original_image_name} completada amb èxit.")
-                print(f"Potrace output for {original_image_name}:\n{result.stdout}")
                 return True
             else:
                 self.status_bar.config(text=f"Error en vectoritzar {original_image_name} amb Potrace: {result.stderr}")
-                print(f"Potrace error for {original_image_name}:\n{result.stderr}")
                 return False
 
         except FileNotFoundError:
             self.status_bar.config(text="Error: Potrace no trobat. Assegura't que està instal·lat i al PATH.")
-            print("Error: Potrace executable not found.")
             return False
         except subprocess.CalledProcessError as e:
             self.status_bar.config(text=f"Error de Potrace per {original_image_name}: {e.stderr.strip()}")
-            print(f"Potrace command failed for {original_image_name}: {e.cmd}\nStdout: {e.stdout}\nStderr: {e.stderr}")
             return False
         except Exception as e:
             self.status_bar.config(text=f"Error inesperat en vectoritzar {original_image_name}: {e}")
-            print(f"Unexpected error during Potrace vectorization: {e}")
             return False
         finally:
-            # Netejar el fitxer PBM temporal
             if 'temp_pbm_path' in locals() and os.path.exists(temp_pbm_path):
                 os.remove(temp_pbm_path)
 
-    def _scale_svg(self, svg_path, width_mm, height_mm, dpi):
+    def _vectorize_centerline(self, binarized_image_np, output_svg_path, original_image_name):
+        """
+        Vectoritza una imatge binaritzada a SVG amb traç únic (centerline) utilitzant esqueletització i seguiment de línies.
+        """
+        self.status_bar.config(text=f"Vectoritzant {original_image_name} amb traç únic (centerline)...")
+
+        try:
+            # 1. Preparar la imatge per a esqueletització
+            # sk_skeletonize espera una imatge booleana (True per foreground, False per background)
+            # La nostra imatge binaritzada té 0 (negre) o 255 (blanc).
+            # Si el traç és negre (0), volem (img == 0). Si el traç és blanc (255), volem (img == 255).
+            # La funció _process_image_for_preview ja ens dóna la imatge amb el traç correcte (0 o 255).
+            # Per a skeletonize, el traç ha de ser el valor True.
+            
+            # Si el traç és 0 (negre), llavors `binarized_image_np == 0` serà True per al traç.
+            # Si el traç és 255 (blanc), llavors `binarized_image_np == 255` serà True per al traç.
+            
+            # La manera més robusta és assegurar que el traç sigui True i el fons False.
+            # Si la imatge binaritzada té el traç negre (0), la convertim a booleana (0 -> True, 255 -> False).
+            # Si la imatge binaritzada té el traç blanc (255), la convertim a booleana (255 -> True, 0 -> False).
+            
+            # La funció _process_image_for_preview ja gestiona la inversió.
+            # Si invert_var és True, el traç és 255 i el fons 0.
+            # Si invert_var és False, el traç és 0 i el fons 255.
+            
+            # sk_skeletonize espera True per al foreground (traç).
+            # Si el traç és negre (0), llavors (binarized_image_np == 0) és True.
+            # Si el traç és blanc (255), llavors (binarized_image_np == 255) és True.
+            
+            # Per tant, la imatge per a skeletonize serà:
+            if self.invert_var.get(): # Si l'usuari ha demanat invertir, el traç és blanc (255)
+                skel_image = (binarized_image_np == 255)
+            else: # El traç és negre (0)
+                skel_image = (binarized_image_np == 0)
+
+            skeleton = sk_skeletonize(skel_image)
+            
+            # Convertim l'esquelet a un array de 0 i 255 per a visualització/processament amb OpenCV
+            skeleton_np = (skeleton * 255).astype(np.uint8)
+
+            # 2. Seguiment de línies (algorisme simple)
+            paths = []
+            visited = np.zeros_like(skeleton, dtype=bool) # Matriu per marcar píxels visitats
+            
+            # Trobar tots els píxels de l'esquelet
+            skel_points = np.argwhere(skeleton) # Obté les coordenades (row, col) dels píxels True
+
+            for r, c in skel_points:
+                if not visited[r, c]:
+                    current_path = []
+                    queue = [(r, c)]
+                    visited[r, c] = True
+
+                    while queue:
+                        curr_r, curr_c = queue.pop(0)
+                        current_path.append((curr_c, curr_r)) # Guardem com (x, y) per a SVG
+
+                        # Veïns 8-connectats
+                        neighbors = []
+                        for dr in [-1, 0, 1]:
+                            for dc in [-1, 0, 1]:
+                                if dr == 0 and dc == 0: continue
+                                nr, nc = curr_r + dr, curr_c + dc
+                                if 0 <= nr < skeleton.shape[0] and 0 <= nc < skeleton.shape[1] and \
+                                   skeleton[nr, nc] and not visited[nr, nc]:
+                                    neighbors.append((nr, nc))
+                        
+                        # Prioritzem la continuïtat: si hi ha un sol veí, el seguim
+                        if len(neighbors) == 1:
+                            next_r, next_c = neighbors[0]
+                            queue.append((next_r, next_c))
+                            visited[next_r, next_c] = True
+                        else: # Si hi ha més d'un veí (bifurcació) o cap, considerem el camí acabat aquí
+                              # i afegim els veïns no visitats a la cua per iniciar nous camins.
+                            for nr, nc in neighbors:
+                                if not visited[nr, nc]: # Només si no s'ha visitat ja des d'un altre camí
+                                    # Afegim-los per a que siguin l'inici d'un nou camí si no ho són ja
+                                    # En una implementació més avançada, aquí es gestionarien les bifurcacions
+                                    # i la unió de segments. Per ara, cada bifurcació pot iniciar un nou camí.
+                                    pass # Ja es gestionaran amb el bucle principal skel_points
+
+                    if len(current_path) > 1: # Si el camí té més d'un punt
+                        paths.append(current_path)
+
+            # 3. Poda de segments curts
+            prune_short = self.prune_short_var.get()
+            if prune_short > 0:
+                filtered_paths = []
+                for path in paths:
+                    # Calculem la longitud del camí (distància euclidiana total)
+                    length = 0
+                    for i in range(len(path) - 1):
+                        p1 = np.array(path[i])
+                        p2 = np.array(path[i+1])
+                        length += np.linalg.norm(p2 - p1)
+                    if length >= prune_short:
+                        filtered_paths.append(path)
+                paths = filtered_paths
+
+
+            # 4. Simplificació Ramer-Douglas-Peucker (RDP)
+            epsilon = self.simplification_epsilon_var.get()
+            if epsilon > 0:
+                simplified_paths = []
+                for path in paths:
+                    if len(path) > 2: # RDP necessita almenys 3 punts
+                        simplified_path = self._ramer_douglas_peucker(path, epsilon)
+                        simplified_paths.append(simplified_path)
+                    else:
+                        simplified_paths.append(path) # Camins curts no es simplifiquen
+                paths = simplified_paths
+
+            # 5. Generar SVG
+            img_height, img_width = binarized_image_np.shape # Dimensions originals de la imatge binaritzada
+            stroke_width_mm = self.stroke_mm_var.get()
+            dpi = self.dpi_var.get()
+            scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get(), (None, None))
+            
+            target_width_mm = None
+            target_height_mm = None
+            if scale_preset_tuple and scale_preset_tuple[0] == "width":
+                target_width_mm = scale_preset_tuple[1]
+            elif scale_preset_tuple and scale_preset_tuple[0] == "height":
+                target_height_mm = scale_preset_tuple[1]
+
+            # El color del traç per a Làser/Plotter/Brodat
+            stroke_color = "#0000FF" # Blau per defecte per a Score/Plotter
+            if self.preset_profile_var.get() == "Làser - Tall (CUT)":
+                stroke_color = "#FF0000" # Vermell per a CUT
+            # Podríem afegir més lògica de color per a brodat si cal
+
+            self._create_svg_from_paths(output_svg_path, paths, img_width, img_height, dpi, stroke_width_mm, stroke_color, target_width_mm, target_height_mm)
+            
+            self.status_bar.config(text=f"Vectorització de {original_image_name} amb traç únic completada amb èxit.")
+            return True
+
+        except Exception as e:
+            self.status_bar.config(text=f"Error en vectoritzar {original_image_name} amb traç únic: {e}")
+            print(f"Error centerline vectorization for {original_image_name}: {e}")
+            return False
+
+    def _create_svg_from_paths(self, output_svg_path, paths, img_width_px, img_height_px, dpi, stroke_width_mm, stroke_color, target_width_mm=None, target_height_mm=None):
+        """
+        Genera un fitxer SVG a partir d'una llista de camins (polilínies).
+        """
+        mm_per_px = 25.4 / dpi
+
+        # Calcular les dimensions finals en mm
+        final_width_mm = img_width_px * mm_per_px
+        final_height_mm = img_height_px * mm_per_px
+
+        # Aplicar escalat si s'especifica un límit (width_mm o height_mm)
+        if target_width_mm is not None and img_width_px > 0:
+            scale_factor = (target_width_mm / mm_per_px) / img_width_px
+            final_width_mm = target_width_mm
+            final_height_mm = img_height_px * mm_per_px * scale_factor
+        elif target_height_mm is not None and img_height_px > 0:
+            scale_factor = (target_height_mm / mm_per_px) / img_height_px
+            final_height_mm = target_height_mm
+            final_width_mm = img_width_px * mm_per_px * scale_factor
+        
+        # Format SVG inicial
+        svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="{final_width_mm:.2f}mm"
+   height="{final_height_mm:.2f}mm"
+   viewBox="0 0 {img_width_px} {img_height_px}"
+   version="1.1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+"""
+        # Afegir cada camí com una polilínia
+        for path_points in paths:
+            # Convertir llista de tuples (x, y) a string "x1,y1 x2,y2 ..."
+            points_str = " ".join([f"{x},{y}" for x, y in path_points])
+            svg_content += f'    <polyline points="{points_str}" style="fill:none;stroke:{stroke_color};stroke-width:{stroke_width_mm:.3f}mm" />\n'
+        
+        svg_content += """  </g>\n</svg>"""
+
+        with open(output_svg_path, 'w') as f:
+            f.write(svg_content)
+
+    def _ramer_douglas_peucker(self, points, epsilon):
+        """
+        Implementació de l'algorisme Ramer-Douglas-Peucker per a la simplificació de polilínies.
+        points: Llista de tuples (x, y) que representen la polilínia.
+        epsilon: Llindar de tolerància.
+        """
+        if len(points) < 3:
+            return points
+
+        # Trobar el punt amb la distància màxima
+        dmax = 0.0
+        index = 0
+        end = len(points) - 1
+        line_segment = np.array(points[end]) - np.array(points[0])
+        line_length_sq = np.dot(line_segment, line_segment) # Squared length
+
+        for i in range(1, end):
+            # Distància perpendicular d'un punt a un segment de línia
+            # https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line#Line_defined_by_two_points
+            
+            # Vector del punt inicial al punt actual
+            point_vector = np.array(points[i]) - np.array(points[0])
+            
+            if line_length_sq == 0: # Cas de segment de longitud zero (punts inicial i final són el mateix)
+                d = np.linalg.norm(point_vector) # Distància del punt al punt inicial
+            else:
+                t = np.dot(point_vector, line_segment) / line_length_sq
+                if t < 0.0:
+                    closest_point_on_line = np.array(points[0])
+                elif t > 1.0:
+                    closest_point_on_line = np.array(points[end])
+                else:
+                    closest_point_on_line = np.array(points[0]) + t * line_segment
+                
+                d = np.linalg.norm(np.array(points[i]) - closest_point_on_line)
+            
+            if d > dmax:
+                index = i
+                dmax = d
+
+        # Si la distància màxima és major que epsilon, recursivament simplificar
+        if dmax > epsilon:
+            rec_results1 = self._ramer_douglas_peucker(points[0:index+1], epsilon)
+            rec_results2 = self._ramer_douglas_peucker(points[index:end+1], epsilon)
+
+            # Reconstruir el resultat (eliminant el punt duplicat a la unió)
+            result_points = rec_results1[:-1] + rec_results2
+        else:
+            result_points = [points[0], points[end]]
+
+        return result_points
+
+
+    def _scale_svg(self, svg_path, target_width_mm, target_height_mm, dpi):
         """
         Ajusta els atributs width, height i viewBox d'un SVG per escalar-lo a mm.
         svg_path: Ruta del fitxer SVG.
-        width_mm, height_mm: Dimensions desitjades en mm.
+        target_width_mm, target_height_mm: Dimensions desitjades en mm (si s'aplica preset d'escala).
         dpi: Resolució en DPI per a la conversió px a mm.
         """
         try:
             with open(svg_path, 'r') as f:
                 svg_content = f.read()
 
-            # Utilitzem BeautifulSoup per parsejar i modificar l'SVG
-            from bs4 import BeautifulSoup
             soup = BeautifulSoup(svg_content, 'xml')
             svg_tag = soup.find('svg')
 
             if not svg_tag:
                 raise ValueError("No s'ha trobat l'etiqueta <svg> al fitxer.")
 
-            # Obtenim les dimensions originals en píxels del viewBox si existeix
             original_width_px = None
             original_height_px = None
+            
+            # Intentem obtenir les dimensions del viewBox primer
             if 'viewBox' in svg_tag.attrs:
                 _, _, original_width_px_str, original_height_px_str = svg_tag['viewBox'].split()
                 original_width_px = float(original_width_px_str)
@@ -691,69 +896,32 @@ class Sketch2SVGApp:
                     original_width_px = float(svg_tag['width'][:-2])
                 if 'height' in svg_tag.attrs and svg_tag['height'].endswith('px'):
                     original_height_px = float(svg_tag['height'][:-2])
-                
-                # Si no podem obtenir les dimensions, no podem escalar
-                if original_width_px is None or original_height_px is None:
-                    self.status_bar.config(text=f"Avís: No s'han pogut determinar les dimensions originals de l'SVG per escalar. No s'aplicarà l'escalat de mida.")
-                    return # No escalem si no tenim dimensions de referència
+            
+            if original_width_px is None or original_height_px is None or original_width_px == 0 or original_height_px == 0:
+                self.status_bar.config(text=f"Avís: No s'han pogut determinar les dimensions originals de l'SVG per escalar. No s'aplicarà l'escalat de mida.")
+                return
 
-            # Calcular el factor de conversió de píxels a mm
-            # 1 inch = 25.4 mm
             mm_per_px = 25.4 / dpi
 
-            # Calcular les dimensions en píxels que correspondrien a les dimensions en mm desitjades
-            target_width_px = width_mm / mm_per_px if width_mm is not None else None
-            target_height_px = height_mm / mm_per_px if height_mm is not None else None
+            # Calcular les dimensions finals en mm segons el DPI
+            final_width_mm = original_width_px * mm_per_px
+            final_height_mm = original_height_px * mm_per_px
 
-            # Determinar l'escala global per encaixar dins els límits
-            scale_factor = 1.0
-            if target_width_px and original_width_px > 0:
-                scale_factor = min(scale_factor, target_width_px / original_width_px)
-            if target_height_px and original_height_px > 0:
-                scale_factor = min(scale_factor, target_height_px / original_height_px)
+            # Ajustar si hi ha un preset d'escala
+            if target_width_mm is not None:
+                scale_factor = target_width_mm / final_width_mm
+                final_width_mm = target_width_mm
+                final_height_mm *= scale_factor
+            elif target_height_mm is not None:
+                scale_factor = target_height_mm / final_height_mm
+                final_height_mm = target_height_mm
+                final_width_mm *= scale_factor
             
-            # Si no s'ha especificat cap límit, o les dimensions originals són 0, no escalem per límit.
-            # Però sempre apliquem el DPI.
+            # Actualitzar els atributs width i height de l'SVG
+            svg_tag['width'] = f"{final_width_mm:.2f}mm"
+            svg_tag['height'] = f"{final_height_mm:.2f}mm"
             
-            # Calcular les noves dimensions del viewBox en píxels (basades en l'escala)
-            new_viewbox_width_px = original_width_px
-            new_viewbox_height_px = original_height_px
-
-            # Ajustar el viewBox si cal (Potrace ja sol generar un viewBox correcte)
-            # Però si volem escalar, hem de canviar el viewBox i les unitats de width/height
-            
-            # Si s'ha seleccionat un preset d'escala
-            selected_scale_preset = self.scale_preset_var.get()
-            scale_type, scale_value_mm = self.scale_preset_values.get(selected_scale_preset, (None, None))
-
-            if scale_type and scale_value_mm is not None:
-                if original_width_px is None or original_height_px is None:
-                     self.status_bar.config(text=f"Avís: No s'han pogut determinar les dimensions originals de l'SVG per escalar. No s'aplicarà l'escalat de mida.")
-                     return # No escalem si no tenim dimensions de referència
-
-                if scale_type == "width":
-                    scale_factor = (scale_value_mm / mm_per_px) / original_width_px
-                elif scale_type == "height":
-                    scale_factor = (scale_value_mm / mm_per_px) / original_height_px
-                
-                new_viewbox_width_px = original_width_px
-                new_viewbox_height_px = original_height_px
-
-                # Si el viewBox ja està ben definit per Potrace, només hem d'actualitzar width/height
-                # en mm i mantenir el viewBox en píxels originals.
-                svg_tag['width'] = f"{new_viewbox_width_px * scale_factor * mm_per_px:.2f}mm"
-                svg_tag['height'] = f"{new_viewbox_height_px * scale_factor * mm_per_px:.2f}mm"
-                
-                # Potrace ja posa un viewBox correcte. Si el modifiquéssim, hauríem de transformar tots els camins.
-                # És més segur mantenir el viewBox original de Potrace i només ajustar width/height en mm.
-                # Opcionalment, podríem afegir un <g transform="scale(...)"> al voltant de tot el contingut.
-                # Per simplicitat i robustesa amb Potrace, només ajustarem els atributs width/height de l'SVG.
-
-            else: # Només apliquem el DPI per defecte si no hi ha preset d'escala
-                svg_tag['width'] = f"{original_width_px * mm_per_px:.2f}mm"
-                svg_tag['height'] = f"{original_height_px * mm_per_px:.2f}mm"
-            
-            # Si no hi ha viewBox, el creem basat en les dimensions originals de Potrace
+            # Assegurar que hi ha un viewBox
             if 'viewBox' not in svg_tag.attrs:
                 svg_tag['viewBox'] = f"0 0 {original_width_px} {original_height_px}"
 
@@ -764,7 +932,6 @@ class Sketch2SVGApp:
 
         except Exception as e:
             self.status_bar.config(text=f"Error en escalar SVG de {os.path.basename(svg_path)}: {e}")
-            print(f"Error scaling SVG: {e}")
 
 
     def export_batch(self):
@@ -782,9 +949,8 @@ class Sketch2SVGApp:
         os.makedirs(output_dir, exist_ok=True)
 
         self.status_bar.config(text=f"Exportant lot a {output_dir}...")
-        self.export_button.config(state=tk.DISABLED) # Desactivar botó durant el procés
+        self.export_button.config(state=tk.DISABLED)
 
-        # Iniciem el processament en lot en un fil separat
         thread = threading.Thread(target=self._export_batch_thread, args=(output_dir,))
         thread.daemon = True
         thread.start()
@@ -800,17 +966,14 @@ class Sketch2SVGApp:
             original_image_name = os.path.basename(image_path)
             base_name, _ = os.path.splitext(original_image_name)
             
-            # Actualitzar la barra d'estat al fil principal
             self.master.after(0, self.status_bar.config, f"Processant {original_image_name} ({i+1}/{total_files})...")
 
             try:
-                # Pas 1: Preprocessar la imatge
                 processed_img_np = self._process_image_for_preview(image_path)
                 if processed_img_np is None:
                     errors.append(f"No s'ha pogut preprocessar {original_image_name}.")
                     continue
 
-                # Pas 2: Vectoritzar segons el mode seleccionat
                 mode = self.mode_var.get()
                 output_svg_filename = f"{base_name}__{mode}.svg"
                 output_svg_path = os.path.join(output_dir, output_svg_filename)
@@ -819,13 +982,9 @@ class Sketch2SVGApp:
                 if mode == "outline":
                     success = self._vectorize_outline_potrace(processed_img_np, output_svg_path, original_image_name)
                 elif mode == "centerline":
-                    # TODO: Implementar vectorització centerline
-                    self.master.after(0, self.status_bar.config, f"Mode 'Traç únic' no implementat encara per {original_image_name}.")
-                    errors.append(f"Mode 'Traç únic' no implementat encara per {original_image_name}.")
-                    continue # Saltar al següent fitxer
+                    success = self._vectorize_centerline(processed_img_np, output_svg_path, original_image_name)
                 
                 if success:
-                    # Pas 3: Aplicar escalat SVG
                     dpi = self.dpi_var.get()
                     scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get(), (None, None))
                     
@@ -846,14 +1005,12 @@ class Sketch2SVGApp:
             except Exception as e:
                 errors.append(f"Error crític processant {original_image_name}: {e}")
                 self.master.after(0, self.status_bar.config, f"Error crític processant {original_image_name}: {e}")
-                print(f"Critical error processing {original_image_name}: {e}")
 
-        # Finalitzar el procés al fil principal
         self.master.after(0, self._finish_batch_export, processed_count, total_files, output_dir, results, errors)
 
     def _finish_batch_export(self, processed_count, total_files, output_dir, results, errors):
         """Finalitza el procés d'exportació en lot i actualitza la UI."""
-        self.export_button.config(state=tk.NORMAL) # Reactivar botó
+        self.export_button.config(state=tk.NORMAL)
 
         manifest_path = os.path.join(output_dir, "manifest.json")
         manifest_content = {
