@@ -113,6 +113,7 @@ def save_config(current_settings):
         print(f"Error guardant la configuració: {e}")
 
 def get_preset_settings(preset_name):
+
     """Retorna els paràmetres d'un preset donat.
 
     Si el nom del preset no es troba, es retorna una còpia de
@@ -127,9 +128,10 @@ def get_preset_settings(preset_name):
         >>> cfg is DEFAULT_STANDARD_SETTINGS
         False
     """
+    settings = DEFAULT_STANDARD_SETTINGS.copy()
     if preset_name in PRESETS:
-        return PRESETS[preset_name]
-    return DEFAULT_STANDARD_SETTINGS.copy()
+        settings.update(PRESETS[preset_name])
+    return settings
 
 def get_preset_names():
     return list(PRESETS.keys())
