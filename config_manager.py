@@ -114,9 +114,10 @@ def save_config(current_settings):
 
 def get_preset_settings(preset_name):
     """Retorna els paràmetres d'un preset donat."""
+    settings = DEFAULT_STANDARD_SETTINGS.copy()
     if preset_name in PRESETS:
-        return PRESETS[preset_name]
-    return DEFAULT_STANDARD_SETTINGS.copy()
+        settings.update(PRESETS[preset_name])
+    return settings
 
 def get_preset_names():
     return list(PRESETS.keys())
