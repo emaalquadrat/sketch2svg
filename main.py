@@ -283,28 +283,29 @@ class Sketch2SVGApp:
             preset_name = self.preset_profile_var.get()
 
         settings_to_apply = config_manager.get_preset_settings(preset_name)
+        default_settings = config_manager.DEFAULT_STANDARD_SETTINGS
 
-        self.mode_var.set(settings_to_apply.get("mode_var", self.mode_var.get()))
-        self.batch_aggressive_var.set(settings_to_apply.get("batch_aggressive_var", self.batch_aggressive_var.get()))
-        
-        self.bin_method_var.set(settings_to_apply.get("bin_method_var", self.bin_method_var.get()))
-        self.threshold_var.set(settings_to_apply.get("threshold_var", self.threshold_var.get()))
-        self.block_size_var.set(settings_to_apply.get("block_size_var", self.block_size_var.get()))
-        self.C_var.set(settings_to_apply.get("C_var", self.C_var.get()))
-        self.illum_sigma_var.set(settings_to_apply.get("illum_sigma_var", self.illum_sigma_var.get()))
-        self.clahe_var.set(settings_to_apply.get("clahe_var", self.clahe_var.get()))
-        self.median_filter_var.set(settings_to_apply.get("median_filter_var", self.median_filter_var.get()))
-        self.opening_radius_var.set(settings_to_apply.get("opening_radius_var", self.opening_radius_var.get()))
-        self.min_area_var.set(settings_to_apply.get("min_area_var", self.min_area_var.get()))
-        self.invert_var.set(settings_to_apply.get("invert_var", self.invert_var.get()))
+        self.mode_var.set(settings_to_apply.get("mode_var", default_settings["mode_var"]))
+        self.batch_aggressive_var.set(settings_to_apply.get("batch_aggressive_var", default_settings["batch_aggressive_var"]))
 
-        self.prune_short_var.set(settings_to_apply.get("prune_short_var", self.prune_short_var.get()))
-        self.simplification_epsilon_var.set(settings_to_apply.get("simplification_epsilon_var", self.simplification_epsilon_var.get()))
-        self.stroke_mm_var.set(settings_to_apply.get("stroke_mm_var", self.stroke_mm_var.get()))
-        self.stitch_length_mm_var.set(settings_to_apply.get("stitch_length_mm_var", self.stitch_length_mm_var.get()))
+        self.bin_method_var.set(settings_to_apply.get("bin_method_var", default_settings["bin_method_var"]))
+        self.threshold_var.set(settings_to_apply.get("threshold_var", default_settings["threshold_var"]))
+        self.block_size_var.set(settings_to_apply.get("block_size_var", default_settings["block_size_var"]))
+        self.C_var.set(settings_to_apply.get("C_var", default_settings["C_var"]))
+        self.illum_sigma_var.set(settings_to_apply.get("illum_sigma_var", default_settings["illum_sigma_var"]))
+        self.clahe_var.set(settings_to_apply.get("clahe_var", default_settings["clahe_var"]))
+        self.median_filter_var.set(settings_to_apply.get("median_filter_var", default_settings["median_filter_var"]))
+        self.opening_radius_var.set(settings_to_apply.get("opening_radius_var", default_settings["opening_radius_var"]))
+        self.min_area_var.set(settings_to_apply.get("min_area_var", default_settings["min_area_var"]))
+        self.invert_var.set(settings_to_apply.get("invert_var", default_settings["invert_var"]))
 
-        self.dpi_var.set(settings_to_apply.get("dpi_var", self.dpi_var.get()))
-        self.scale_preset_var.set(settings_to_apply.get("scale_preset_var", self.scale_preset_var.get()))
+        self.prune_short_var.set(settings_to_apply.get("prune_short_var", default_settings["prune_short_var"]))
+        self.simplification_epsilon_var.set(settings_to_apply.get("simplification_epsilon_var", default_settings["simplification_epsilon_var"]))
+        self.stroke_mm_var.set(settings_to_apply.get("stroke_mm_var", default_settings["stroke_mm_var"]))
+        self.stitch_length_mm_var.set(settings_to_apply.get("stitch_length_mm_var", default_settings["stitch_length_mm_var"]))
+
+        self.dpi_var.set(settings_to_apply.get("dpi_var", default_settings["dpi_var"]))
+        self.scale_preset_var.set(settings_to_apply.get("scale_preset_var", default_settings["scale_preset_var"]))
 
         self.update_parameters_visibility()
         self.preview_image()
