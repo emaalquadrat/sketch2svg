@@ -44,10 +44,10 @@ FONTS = {
     "UI_Tooltip": ("Inter", 8, "normal")
 }
 
-class Sketch2SVGApp:
+class TramaMakerConversor2dApp:
     def __init__(self, master):
         self.master = master
-        master.title("Sketch2SVG")
+        master.title("Trama Maker Conversor 2d")
         master.geometry("1000x700")
         master.configure(bg=COLORS["Nexe_50"])
 
@@ -122,7 +122,7 @@ class Sketch2SVGApp:
         self.control_frame.grid_columnconfigure(2, weight=0, minsize=50)
 
 
-        ttk.Label(self.control_frame, text="Controls de Sketch2SVG", font=FONTS["Title"], foreground=COLORS["Nexe_800"]).grid(row=0, column=0, columnspan=3, pady=(0, 20), sticky="ew")
+        ttk.Label(self.control_frame, text="Controls de Trama Maker Conversor 2d", font=FONTS["Title"], foreground=COLORS["Nexe_800"]).grid(row=0, column=0, columnspan=3, pady=(0, 20), sticky="ew")
 
         self.add_section_title(self.control_frame, "Configuració General", 1)
 
@@ -1256,5 +1256,5 @@ if __name__ == "__main__":
               background=[('active', COLORS["Nexe_200"])])
 
 
-    app = Sketch2SVGApp(root)
+    app = TramaMakerConversor2dApp(root)
     root.mainloop()

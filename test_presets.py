@@ -1,9 +1,9 @@
 import unittest
 import config_manager
 try:
-    from main import Sketch2SVGApp
+    from main import TramaMakerConversor2dApp
 except ModuleNotFoundError:  # Dependencies for main (e.g., Pillow) may be missing in test env
-    Sketch2SVGApp = None
+    TramaMakerConversor2dApp = None
 
 class DummyVar:
     def __init__(self, value):
@@ -31,7 +31,7 @@ class DummyApp:
         pass
 
 class TestApplyPreset(unittest.TestCase):
-    @unittest.skipUnless(Sketch2SVGApp is not None, "Sketch2SVGApp or dependencies not available")
+    @unittest.skipUnless(TramaMakerConversor2dApp is not None, "TramaMakerConversor2dApp or dependencies not available")
     def test_presets_reset_defaults(self):
         defaults = config_manager.DEFAULT_STANDARD_SETTINGS
         for preset_name in config_manager.PRESETS.keys():
@@ -46,7 +46,7 @@ class TestApplyPreset(unittest.TestCase):
                 else:
                     var.set("CHANGED")
             # Apply preset
-            Sketch2SVGApp.apply_preset(app, preset_name)
+            TramaMakerConversor2dApp.apply_preset(app, preset_name)
             expected = {**defaults, **config_manager.PRESETS[preset_name]}
             for key, expected_value in expected.items():
                 self.assertEqual(getattr(app, key).get(), expected_value, f"{preset_name} did not reset {key}")
