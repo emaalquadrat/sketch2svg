@@ -108,7 +108,20 @@ def save_config(current_settings):
         print(f"Error guardant la configuració: {e}")
 
 def get_preset_settings(preset_name):
-    """Retorna els paràmetres d'un preset donat."""
+    """Retorna els paràmetres d'un preset donat.
+
+    Si el nom del preset no es troba, es retorna una còpia de
+    ``DEFAULT_STANDARD_SETTINGS``.
+
+    Exemples:
+        >>> get_preset_settings("Làser - Tall (CUT)")["mode_var"]
+        'outline'
+        >>> cfg = get_preset_settings("Preset Inexistent")
+        >>> cfg == DEFAULT_STANDARD_SETTINGS
+        True
+        >>> cfg is DEFAULT_STANDARD_SETTINGS
+        False
+    """
     if preset_name in PRESETS:
         return PRESETS[preset_name]
     return DEFAULT_STANDARD_SETTINGS.copy()
