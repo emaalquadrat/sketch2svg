@@ -13,9 +13,10 @@ import json
 from bs4 import BeautifulSoup
 import ezdxf
 import re
+import csv
 
 from skimage.morphology import skeletonize as sk_skeletonize
-from svg.path import parse_path # Importem parse_path de svg.path
+from svg.path import parse_path, Line, CubicBezier, QuadraticBezier, Arc # Importem tipus de segments per a parsing
 
 # --- Colors Corporatius emaalquadrat Nexe ---
 COLORS = {
@@ -56,6 +57,7 @@ class Sketch2SVGApp:
         master.grid_columnconfigure(0, weight=1)
         master.grid_columnconfigure(1, weight=3)
 
+        # --- Inicialització de totes les variables de control ---
         self.mode_var = tk.StringVar()
         self.batch_aggressive_var = tk.BooleanVar()
         self.preset_profile_var = tk.StringVar()
@@ -74,6 +76,7 @@ class Sketch2SVGApp:
         self.prune_short_var = tk.DoubleVar()
         self.simplification_epsilon_var = tk.DoubleVar()
         self.stroke_mm_var = tk.DoubleVar()
+        self.stitch_length_mm_var = tk.DoubleVar()
 
         self.dpi_var = tk.IntVar()
         self.scale_preset_var = tk.StringVar()
@@ -82,7 +85,10 @@ class Sketch2SVGApp:
             "none": None, "Alçada 20mm": ("height", 20), "Alçada 25mm": ("height", 25), "Alçada 30mm": ("height", 30),
             "Amplada 20mm": ("width", 20), "Amplada 25mm": ("width", 25), "Amplada 30mm": ("width", 30)
         }
+        # --- Fi de la inicialització de variables de control ---
 
+
+        # --- Frame esquerre per controls (Panell de configuració) ---
         self.canvas = tk.Canvas(master, bg=COLORS["Nexe_50"], highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
@@ -139,6 +145,7 @@ class Sketch2SVGApp:
         self.add_section_title(self.control_frame, "Preprocés d'Imatge (Correcció de la imatge d'entrada)", 11)
         self.create_image_preprocessing_controls(self.control_frame, 12)
 
+        # --- Panell de Paràmetres de Traç Únic (Centerline) ---
         self.centerline_params_frame = ttk.LabelFrame(self.control_frame, text="Paràmetres Traç Únic (Esquelet del dibuix)", padding="10")
         self.centerline_params_frame.grid_columnconfigure(0, weight=2)
         self.centerline_params_frame.grid_columnconfigure(1, weight=3)
@@ -147,14 +154,18 @@ class Sketch2SVGApp:
         self.add_slider(self.centerline_params_frame, "Poda segments curts (px):", self.prune_short_var, 0, 50, 0.5, row=0, tooltip="Elimina les línies de l'esquelet molt petites o sorolloses, que podrien ser errors o detalls indesitjats. Utilitza valors baixos per mantenir els detalls.")
         self.add_slider(self.centerline_params_frame, "Simplificació línies ε (px):", self.simplification_epsilon_var, 0, 10, 0.1, row=1, tooltip="Simplifica les línies del dibuix eliminant punts redundants. Un valor més alt crea línies més suaus però menys precises. Ajuda a reduir la complexitat de l'SVG.")
         self.add_slider(self.centerline_params_frame, "Gruix de traç (mm):", self.stroke_mm_var, 0.01, 2.0, 0.01, row=2, tooltip="Defineix el gruix de la línia per a la visualització al fitxer SVG final. Aquest valor és només per mostrar el dibuix, no afecta el procés de vectorització.")
+        self.add_slider(self.centerline_params_frame, "Llargada de punt (mm):", self.stitch_length_mm_var, 0.1, 5.0, 0.1, row=3, tooltip="Llargada mitjana de cada punt de brodat. Afecta la densitat dels punts exportats al CSV. Valors més petits generen més punts i més detall.")
 
+        # --- Panell de Unitats SVG ---
         self.add_section_title(self.control_frame, "Unitats i Escalats SVG (Mida del resultat)", 90)
         self.create_svg_units_controls(self.control_frame, 91)
 
+        # --- Secció d'Accions ---
         self.add_section_title(self.control_frame, "Accions", 95)
         self.export_button = ttk.Button(self.control_frame, text="Exporta lot a SVG", command=self.export_batch)
         self.export_button.grid(row=96, column=0, columnspan=3, pady=(5, 10), sticky="ew")
 
+        # --- Frame dret per previsualització i missatges ---
         self.preview_frame = ttk.Frame(master, relief="sunken", padding="10", width=600, height=600, style="Preview.TFrame")
         self.preview_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         self.preview_frame.grid_rowconfigure(0, weight=1)
@@ -163,6 +174,7 @@ class Sketch2SVGApp:
         self.preview_label = ttk.Label(self.preview_frame, text="Selecciona una carpeta amb imatges d'esbossos per començar.", background=COLORS["White"], anchor="center", justify="center")
         self.preview_label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
+        # Barra d'estat
         self.status_bar = ttk.Label(master, text="Estat: Esperant...", relief=tk.SUNKEN, anchor=tk.W, background=COLORS["Nexe_100"], foreground=COLORS["Nexe_800"])
         self.status_bar.grid(row=1, column=0, columnspan=2, sticky="ew")
 
@@ -173,18 +185,22 @@ class Sketch2SVGApp:
         self._load_initial_config()
     
     def _on_canvas_configure(self, event):
+        """Actualitza la mida de la finestra del frame dins del canvas quan el canvas canvia de mida."""
         self.canvas.itemconfig(self.canvas_frame_id, width=self.canvas.winfo_width())
 
     def _on_frame_configure(self, event):
+        """Actualitza la regió de scroll del canvas quan el frame de controls canvia de mida."""
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def _on_mouse_wheel(self, event):
+        """Gestiona els esdeveniments de la rodeta del ratolí per al scroll."""
         if event.num == 4 or event.delta > 0:
             self.canvas.yview_scroll(-1, "units")
         elif event.num == 5 or event.delta < 0:
             self.canvas.yview_scroll(1, "units")
 
-    def _load_initial_config(self):
+    def _load_initial_config(self, initial_load=True):
+        """Carrega la configuració guardada o la per defecte i l'aplica a les variables de control."""
         settings = config_manager.load_config()
         
         self.mode_var.set(settings.get("mode_var", config_manager.DEFAULT_STANDARD_SETTINGS["mode_var"]))
@@ -204,9 +220,7 @@ class Sketch2SVGApp:
         self.prune_short_var.set(settings.get("prune_short_var", config_manager.DEFAULT_STANDARD_SETTINGS["prune_short_var"]))
         self.simplification_epsilon_var.set(settings.get("simplification_epsilon_var", config_manager.DEFAULT_STANDARD_SETTINGS["simplification_epsilon_var"]))
         self.stroke_mm_var.set(settings.get("stroke_mm_var", config_manager.DEFAULT_STANDARD_SETTINGS["stroke_mm_var"]))
-
-        self.dpi_var.set(settings.get("dpi_var", config_manager.DEFAULT_STANDARD_SETTINGS["dpi_var"]))
-        self.scale_preset_var.set(settings.get("scale_preset_var", config_manager.DEFAULT_STANDARD_SETTINGS["scale_preset_var"]))
+        self.stitch_length_mm_var.set(settings.get("stitch_length_mm_var", config_manager.DEFAULT_STANDARD_SETTINGS["stitch_length_mm_var"]))
 
         last_preset = settings.get("last_preset_profile", list(config_manager.PRESETS.keys())[0])
         self.preset_profile_var.set(last_preset)
@@ -230,6 +244,7 @@ class Sketch2SVGApp:
             self.apply_preset(self.preset_profile_var.get())
 
     def _get_current_settings(self):
+        """Recull la configuració actual de la UI en un diccionari."""
         settings = {
             "mode_var": self.mode_var.get(),
             "batch_aggressive_var": self.batch_aggressive_var.get(),
@@ -246,6 +261,7 @@ class Sketch2SVGApp:
             "prune_short_var": self.prune_short_var.get(),
             "simplification_epsilon_var": self.simplification_epsilon_var.get(),
             "stroke_mm_var": self.stroke_mm_var.get(),
+            "stitch_length_mm_var": self.stitch_length_mm_var.get(),
             "dpi_var": self.dpi_var.get(),
             "scale_preset_var": self.scale_preset_var.get(),
             "last_folder": self.folder_path_label.cget("text") if "Cap carpeta seleccionada" not in self.folder_path_label.cget("text") else "",
@@ -254,6 +270,7 @@ class Sketch2SVGApp:
         return settings
 
     def on_closing(self):
+        """Accions a realitzar en tancar la finestra (guardar configuració)."""
         self.status_bar.config(text="Guardant configuració...")
         self.master.update_idletasks()
         config_manager.save_config(self._get_current_settings())
@@ -261,6 +278,7 @@ class Sketch2SVGApp:
         self.master.after(500, self.master.destroy)
 
     def apply_preset(self, preset_name=None):
+        """Aplica la configuració d'un preset seleccionat al GUI."""
         if preset_name is None:
             preset_name = self.preset_profile_var.get()
 
@@ -283,6 +301,7 @@ class Sketch2SVGApp:
         self.prune_short_var.set(settings_to_apply.get("prune_short_var", self.prune_short_var.get()))
         self.simplification_epsilon_var.set(settings_to_apply.get("simplification_epsilon_var", self.simplification_epsilon_var.get()))
         self.stroke_mm_var.set(settings_to_apply.get("stroke_mm_var", self.stroke_mm_var.get()))
+        self.stitch_length_mm_var.set(settings_to_apply.get("stitch_length_mm_var", self.stitch_length_mm_var.get()))
 
         self.dpi_var.set(settings_to_apply.get("dpi_var", self.dpi_var.get()))
         self.scale_preset_var.set(settings_to_apply.get("scale_preset_var", self.scale_preset_var.get()))
@@ -292,11 +311,13 @@ class Sketch2SVGApp:
         self.status_bar.config(text=f"Preset '{preset_name}' aplicat.")
 
     def reset_current_profile_settings(self):
+        """Restaurar els paràmetres de preprocessament i vectorització al preset actual."""
         current_preset_name = self.preset_profile_var.get()
         self.apply_preset(current_preset_name)
 
 
     def add_section_title(self, parent_frame, title_text, row):
+        """Afegeix un títol de secció amb un separador."""
         ttk.Label(parent_frame, text=title_text, font=FONTS["SectionTitle"], foreground=COLORS["Nexe_700"]).grid(
             row=row, column=0, columnspan=3, sticky="w", pady=(15, 0)
         )
@@ -307,6 +328,7 @@ class Sketch2SVGApp:
 
 
     def add_slider(self, parent_frame, label_text, var_obj, from_, to, resolution, row, tooltip=""):
+        """Afegeix un label, slider i entrada per un paràmetre."""
         ttk.Label(parent_frame, text=label_text).grid(row=row, column=0, sticky="w", pady=2, padx=(0, 5))
         
         vcmd = (parent_frame.register(self._validate_entry), '%P', '%V', str(from_), str(to), var_obj._name)
@@ -353,10 +375,12 @@ class Sketch2SVGApp:
 
 
     def create_tooltip(self, widget, text):
+        """Crea un tooltip per a un widget."""
         toolTip = ToolTip(widget, text)
 
 
     def create_image_preprocessing_controls(self, parent_frame, start_row):
+        """Crea els controls per al preprocessament d'imatge, reordenats."""
         row_offset = 0
 
         self.add_slider(parent_frame, "Correcció il·luminació (nitidesa fons):", self.illum_sigma_var, 1, 200, 1, start_row + row_offset, tooltip="Ajusta la suavitat amb què es calcula el fons de la imatge. Valors alts fan que el fons sigui més suau, ajudant a corregir il·luminació irregular i a fer el traçat més net.")
@@ -392,6 +416,7 @@ class Sketch2SVGApp:
 
 
     def create_svg_units_controls(self, parent_frame, start_row):
+        """Crea els controls per a les unitats SVG."""
         self.add_slider(parent_frame, "Resolució DPI (imatge original):", self.dpi_var, 50, 200, 1, start_row, tooltip="Píxels per polzada (Dots Per Inch) de la imatge original. Afecta l'escala final de l'SVG: una DPI més alta implica un dibuix més gran en mil·límetres.")
 
         ttk.Label(parent_frame, text="Mida final (escala):").grid(row=start_row+1, column=0, sticky="w", padx=(0, 5))
@@ -400,6 +425,7 @@ class Sketch2SVGApp:
 
 
     def update_parameters_visibility(self, event=None):
+        """Actualitza la visibilitat dels controls segons el mode seleccionat."""
         if self.mode_var.get() == "centerline":
             self.centerline_params_frame.grid(row=80, column=0, columnspan=3, sticky="ew", padx=5, pady=10)
         else:
@@ -408,6 +434,7 @@ class Sketch2SVGApp:
 
 
     def select_folder(self):
+        """Obre un diàleg per seleccionar una carpeta amb imatges."""
         folder_selected = filedialog.askdirectory()
         if folder_selected:
             self.folder_path_label.config(text=folder_selected)
@@ -425,6 +452,7 @@ class Sketch2SVGApp:
 
 
     def _process_image_for_preview(self, image_path):
+        """Processa una imatge amb els paràmetres de preprocessament i la retorna binaritzada."""
         try:
             img_bgr = cv2.imread(image_path)
             if img_bgr is None:
@@ -484,6 +512,7 @@ class Sketch2SVGApp:
 
 
     def _update_preview_display(self, processed_img_np, image_path):
+        """Actualitza la visualització de la previsualització al fil principal."""
         if processed_img_np is not None:
             img_pil = Image.fromarray(processed_img_np)
 
@@ -513,6 +542,7 @@ class Sketch2SVGApp:
             self.display_image_data = None
 
     def preview_image(self):
+        """Inicia el processament de la imatge en un fil separat i actualitza la UI."""
         if not self.image_files or self.current_image_index == -1:
             self.status_bar.config(text="No hi ha imatge per previsualitzar. Selecciona una carpeta.")
             self.preview_label.config(image='', text="Selecciona una carpeta amb imatges d'esbossos per començar.")
@@ -528,10 +558,15 @@ class Sketch2SVGApp:
         thread.start()
 
     def _process_and_update_thread(self, image_path):
+        """Funció que s'executa en un fil separat per processar la imatge."""
         processed_img_np = self._process_image_for_preview(image_path)
         self.master.after(0, self._update_preview_display, processed_img_np, image_path)
 
     def _vectorize_outline_potrace(self, binarized_image_np, output_svg_path, original_image_name):
+        """
+        Vectoritza una imatge binaritzada a SVG utilitzant Potrace.
+        Retorna els camins (polígons) de l'SVG per a l'exportació DXF.
+        """
         self.status_bar.config(text=f"Vectoritzant {original_image_name} amb Potrace...")
         
         try:
@@ -564,23 +599,30 @@ class Sketch2SVGApp:
                 for path_tag in soup.find_all('path'):
                     d_attr = path_tag.get('d')
                     if d_attr:
-                        # Utilitzem svg.path per parsejar l'atribut 'd' de forma robusta
                         parsed_path = parse_path(d_attr)
                         current_path_points = []
                         for segment in parsed_path:
-                            # Per cada segment (Line, CubicBezier, etc.), obtenim els punts
-                            # Simplifiquem a punts finals de cada segment per a DXF
-                            if hasattr(segment, 'start'): # Tots els segments tenen start i end
+                            if hasattr(segment, 'start'):
                                 current_path_points.append((segment.start.real, segment.start.imag))
-                            if hasattr(segment, 'end'):
+                            
+                            if isinstance(segment, (Line, CubicBezier, QuadraticBezier, Arc)):
+                                if isinstance(segment, Line):
+                                    if hasattr(segment, 'end') and (segment.end.real, segment.end.imag) != current_path_points[-1]:
+                                        current_path_points.append((segment.end.real, segment.end.imag))
+                                else:
+                                    num_samples = 10
+                                    for t in np.linspace(0, 1, num_samples):
+                                        point_at_t = segment.point(t)
+                                        current_path_points.append((point_at_t.real, point_at_t.imag))
+                            elif hasattr(segment, 'end'):
                                 current_path_points.append((segment.end.real, segment.end.imag))
                         
-                        # Eliminar punts duplicats consecutius
                         unique_points = []
                         if current_path_points:
                             unique_points.append(current_path_points[0])
                             for i in range(1, len(current_path_points)):
-                                if current_path_points[i] != current_path_points[i-1]:
+                                if abs(current_path_points[i][0] - unique_points[-1][0]) > 1e-6 or \
+                                   abs(current_path_points[i][1] - unique_points[-1][1]) > 1e-6:
                                     unique_points.append(current_path_points[i])
 
                         if unique_points:
@@ -608,7 +650,12 @@ class Sketch2SVGApp:
                 os.remove(temp_pbm_path)
 
     def _vectorize_centerline(self, binarized_image_np, output_svg_path, original_image_name):
+        """
+        Vectoritza una imatge binaritzada a SVG amb traç únic (centerline) utilitzant esqueletització i seguiment de línies.
+        Retorna els camins (polilínies) per a l'exportació DXF i CSV.
+        """
         self.status_bar.config(text=f"Vectoritzant {original_image_name} amb traç únic (centerline)...")
+        print(f"DEBUG Centerline: Iniciant vectorització per a {original_image_name}")
 
         try:
             if self.invert_var.get():
@@ -616,12 +663,15 @@ class Sketch2SVGApp:
             else:
                 skel_image = (binarized_image_np == 0)
 
+            print(f"DEBUG Centerline: Imatge per esqueletitzar: {skel_image.shape}, dtype: {skel_image.dtype}")
             skeleton = sk_skeletonize(skel_image)
+            print(f"DEBUG Centerline: Esqueletització completada. Píxels True: {np.sum(skeleton)}")
             
             paths = []
             visited = np.zeros_like(skeleton, dtype=bool)
             
             skel_points = np.argwhere(skeleton)
+            print(f"DEBUG Centerline: Punts d'esquelet trobats: {len(skel_points)}")
 
             for r, c in skel_points:
                 if not visited[r, c]:
@@ -651,6 +701,7 @@ class Sketch2SVGApp:
 
                     if len(current_path) > 1:
                         paths.append(current_path)
+            print(f"DEBUG Centerline: Camins bruts (abans de poda/simplificació): {len(paths)}")
 
             prune_short = self.prune_short_var.get()
             if prune_short > 0:
@@ -664,18 +715,28 @@ class Sketch2SVGApp:
                     if length >= prune_short:
                         filtered_paths.append(path)
                 paths = filtered_paths
+                print(f"DEBUG Centerline: Camins després de poda ({prune_short}px): {len(paths)}")
 
 
             epsilon = self.simplification_epsilon_var.get()
             if epsilon > 0:
                 simplified_paths = []
                 for path in paths:
-                    if len(path) > 2:
+                    if len(path) > 1:
                         simplified_path = self._ramer_douglas_peucker(path, epsilon)
-                        simplified_paths.append(simplified_path)
+                        if len(simplified_path) > 1 or (len(simplified_path) == 1 and not np.allclose(path[0], path[-1])):
+                           simplified_paths.append(simplified_path)
+                        else:
+                           print(f"DEBUG Centerline: RDP simplified path to a degenerate segment, discarding.")
                     else:
                         simplified_paths.append(path)
                 paths = simplified_paths
+                print(f"DEBUG Centerline: Camins després de simplificació ({epsilon}px): {len(paths)}")
+
+            if not paths:
+                print("DEBUG Centerline: No s'han trobat camins vàlids després del processament.")
+                self.status_bar.config(text=f"Avís: No s'han trobat camins per a {original_image_name} en mode traç únic.")
+                return False, []
 
             img_height, img_width = binarized_image_np.shape
             stroke_width_mm = self.stroke_mm_var.get()
@@ -698,6 +759,7 @@ class Sketch2SVGApp:
 
         except Exception as e:
             self.status_bar.config(text=f"Error en vectoritzar {original_image_name} amb traç únic: {e}")
+            print(f"DEBUG Centerline: ERROR en vectorització: {e}")
             return False, []
 
     def _create_svg_from_paths(self, output_svg_path, paths, img_width_px, img_height_px, dpi, stroke_width_mm, stroke_color, target_width_mm=None, target_height_mm=None):
@@ -744,42 +806,78 @@ class Sketch2SVGApp:
             f.write(svg_content)
 
     def _ramer_douglas_peucker(self, points, epsilon):
-        if len(points) < 3:
+        print(f"DEBUG RDP: Called with {len(points)} points, epsilon={epsilon}")
+        points_np = np.array(points)
+
+        # Base case: A path with 0 or 1 point cannot be simplified.
+        # A path with 2 points is a line segment, which is already simplified.
+        if len(points_np) < 2:
+            print(f"DEBUG RDP: Base case (len < 2), returning {len(points_np)} points.")
             return points
+
+        # If start and end points are identical (degenerate segment)
+        # This covers cases where a segment collapses to a single point.
+        if np.allclose(points_np[0], points_np[-1]):
+            print(f"DEBUG RDP: Degenerate segment (start == end), returning single point.")
+            return [points[0]]
+
+        if len(points_np) == 2:
+            print(f"DEBUG RDP: Base case (len == 2), returning 2 points.")
+            return points
+
 
         dmax = 0.0
         index = 0
-        end = len(points) - 1
-        line_segment = np.array(points[end]) - np.array(points[0])
-        line_length_sq = np.dot(line_segment, line_segment)
+        end_idx = len(points_np) - 1
+        
+        p_start = points_np[0]
+        p_end = points_np[end_idx]
+        line_segment_vec = p_end - p_start
+        line_length_sq = np.dot(line_segment_vec, line_segment_vec)
 
-        for i in range(1, end):
-            point_vector = np.array(points[i]) - np.array(points[0])
+        print(f"DEBUG RDP: Segment from {p_start} to {p_end}. Length squared: {line_length_sq}")
+
+        # CRITICAL CHECK: Safeguard against division by zero for *sub-segments*
+        # This is the most likely place where line_length_sq could be zero for a sub-segment.
+        if line_length_sq < 1e-12: # Use a small tolerance for floating point zero
+            print(f"DEBUG RDP: line_length_sq is near zero ({line_length_sq}), returning start point only.")
+            return [points[0]] # Return just the start point to avoid division by zero
+
+        for i in range(1, end_idx):
+            point_vec = points_np[i] - p_start
             
-            if line_length_sq == 0:
-                d = np.linalg.norm(point_vector)
+            t = np.dot(point_vec, line_segment_vec) / line_length_sq # Division happens here
+            
+            if t < 0.0:
+                closest_point_on_line = p_start
+            elif t > 1.0:
+                closest_point_on_line = p_end
             else:
-                t = np.dot(point_vector, line_segment) / line_length_sq
-                if t < 0.0:
-                    closest_point_on_line = np.array(points[0])
-                elif t > 1.0:
-                    closest_point_on_line = np.array(points[end])
-                else:
-                    closest_point_on_line = np.array(points[0]) + t * line_segment
-                
-                d = np.linalg.norm(np.array(points[i]) - closest_point_on_line)
+                closest_point_on_line = p_start + t * line_segment_vec
+            
+            d = np.linalg.norm(points_np[i] - closest_point_on_line)
             
             if d > dmax:
                 index = i
                 dmax = d
 
-        if dmax > epsilon:
-            rec_results1 = self._ramer_douglas_peucker(points[0:index+1], epsilon)
-            rec_results2 = self._ramer_douglas_peucker(points[index:end+1], epsilon)
+        print(f"DEBUG RDP: Max distance {dmax} at index {index}. Epsilon: {epsilon}")
 
-            result_points = rec_results1[:-1] + rec_results2
+        if dmax > epsilon:
+            print(f"DEBUG RDP: dmax > epsilon. Recursing on sub-segments.")
+            rec_results1 = self._ramer_douglas_peucker(points[0:index+1], epsilon)
+            rec_results2 = self._ramer_douglas_peucker(points[index:end_idx+1], epsilon)
+
+            # Reconstruct the result, avoiding duplicate point at the join
+            # Check if results are not empty before accessing last/first element
+            if rec_results1 and rec_results2 and np.allclose(rec_results1[-1], rec_results2[0]):
+                result_points = rec_results1[:-1] + rec_results2
+            else:
+                result_points = rec_results1 + rec_results2
+            print(f"DEBUG RDP: Recurse result len: {len(result_points)}")
         else:
-            result_points = [points[0], points[end]]
+            print(f"DEBUG RDP: dmax <= epsilon. Simplifying to start and end points.")
+            result_points = [points[0], points[end_idx]]
 
         return result_points
 
@@ -801,7 +899,7 @@ class Sketch2SVGApp:
                 dxf_points = [(p[0] * mm_per_px, p[1] * mm_per_px) for p in path_points]
 
                 if len(dxf_points) > 1:
-                    is_closed = (len(dxf_points) > 2 and dxf_points[0] == dxf_points[-1])
+                    is_closed = (len(dxf_points) > 2 and np.allclose(dxf_points[0], dxf_points[-1]))
                     
                     if is_closed:
                         msp.add_lwpolyline(dxf_points, dxfattribs={'layer': layer_name, 'closed': True})
@@ -810,7 +908,7 @@ class Sketch2SVGApp:
                         msp.add_lwpolyline(dxf_points, dxfattribs={'layer': layer_name})
                         print(f"DEBUG: Afegit LWPOLYLINE oberta amb {len(dxf_points)} punts.")
                 else:
-                    print(f"DEBUG: Camí massa curt per a DXF: {len(dxf_points)} punts.")
+                    print(f"DEBUG: Camí massa curt per a DXF: {len(dxf_points)} punts, saltant.")
                         
             doc.saveas(output_dxf_path)
             self.status_bar.config(text=f"DXF de {os.path.basename(output_dxf_path)} generat amb èxit.")
@@ -819,6 +917,34 @@ class Sketch2SVGApp:
         except Exception as e:
             self.status_bar.config(text=f"Error en exportar DXF de {os.path.basename(output_dxf_path)}: {e}")
             print(f"DEBUG: ERROR en exportar DXF: {e}")
+            return False
+
+    def _export_csv_from_paths(self, output_csv_path, paths, img_width_px, img_height_px, dpi, stitch_length_mm):
+        self.status_bar.config(text=f"Exportant CSV de punts a {os.path.basename(output_csv_path)}...")
+        print(f"DEBUG: Intentant exportar CSV a {output_csv_path}.")
+        print(f"DEBUG: Número de camins per CSV: {len(paths)}")
+
+        mm_per_px = 25.4 / dpi
+
+        try:
+            with open(output_csv_path, 'w', newline='') as csvfile:
+                csv_writer = csv.writer(csvfile)
+                csv_writer.writerow(['X_mm', 'Y_mm']) # Capçalera
+
+                total_points = 0
+                for path_points in paths:
+                    for x_px, y_px in path_points:
+                        x_mm = x_px * mm_per_px
+                        y_mm = y_px * mm_per_px
+                        csv_writer.writerow([f"{x_mm:.3f}", f"{y_mm:.3f}"])
+                        total_points += 1
+            
+            self.status_bar.config(text=f"CSV de {os.path.basename(output_csv_path)} generat amb èxit ({total_points} punts).")
+            print(f"DEBUG: CSV guardat amb èxit a {output_csv_path} amb {total_points} punts.")
+            return True
+        except Exception as e:
+            self.status_bar.config(text=f"Error en exportar CSV de {os.path.basename(output_csv_path)}: {e}")
+            print(f"DEBUG: ERROR en exportar CSV: {e}")
             return False
 
 
@@ -899,6 +1025,11 @@ class Sketch2SVGApp:
         thread.daemon = True
         thread.start()
 
+    def _update_status_bar_text(self, message):
+        """Funció auxiliar per actualitzar la barra d'estat de forma segura des de qualsevol fil."""
+        self.status_bar.config(text=message)
+        self.master.update_idletasks() # Força l'actualització visual
+
     def _export_batch_thread(self, output_dir):
         results = []
         errors = []
@@ -909,12 +1040,14 @@ class Sketch2SVGApp:
             original_image_name = os.path.basename(image_path)
             base_name, _ = os.path.splitext(original_image_name)
             
-            self.master.after(0, lambda name=original_image_name, idx=i, total=total_files: self.status_bar.config(text=f"Processant {name} ({idx+1}/{total})..."))
+            self.master.after(0, self._update_status_bar_text, f"Processant {original_image_name} ({i+1}/{total_files})...")
+            print(f"DEBUG: Iniciant processament de {original_image_name}")
 
             try:
                 processed_img_np = self._process_image_for_preview(image_path)
                 if processed_img_np is None:
                     errors.append(f"No s'ha pogut preprocessar {original_image_name}.")
+                    print(f"DEBUG: Error preprocessant {original_image_name}. Saltant.")
                     continue
 
                 mode = self.mode_var.get()
@@ -923,6 +1056,7 @@ class Sketch2SVGApp:
                 
                 vectorized_paths = []
                 success_svg = False
+                print(f"DEBUG: Mode seleccionat: {mode}")
 
                 if mode == "outline":
                     success_svg, vectorized_paths = self._vectorize_outline_potrace(processed_img_np, output_svg_path, original_image_name)
@@ -930,6 +1064,7 @@ class Sketch2SVGApp:
                     success_svg, vectorized_paths = self._vectorize_centerline(processed_img_np, output_svg_path, original_image_name)
                 
                 if success_svg:
+                    print(f"DEBUG: Vectorització SVG exitosa per {original_image_name}. Camins obtinguts: {len(vectorized_paths)}")
                     dpi = self.dpi_var.get()
                     scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get(), (None, None))
                     
@@ -944,6 +1079,7 @@ class Sketch2SVGApp:
                     
                     current_preset = self.preset_profile_var.get()
                     export_dxf = False
+                    export_csv = False
                     dxf_layer = ""
                     dxf_color = 0
 
@@ -958,8 +1094,11 @@ class Sketch2SVGApp:
                         dxf_layer = "SCORE"
                         dxf_color = 5
                         print("DEBUG: Preset és 'Làser - Marcat / Gravat (SCORE)', export_dxf = True")
+                    elif current_preset == "Brodat (Running Stitch)":
+                        export_csv = True
+                        print("DEBUG: Preset és 'Brodat (Running Stitch)', export_csv = True")
                     else:
-                        print("DEBUG: Preset no és de làser, no s'exportarà DXF.")
+                        print("DEBUG: Preset no és de làser ni brodat, no s'exportarà DXF/CSV.")
 
 
                     if export_dxf and vectorized_paths:
@@ -971,14 +1110,25 @@ class Sketch2SVGApp:
                         print(f"DEBUG: Condició DXF no complerta: export_dxf={export_dxf}, vectorized_paths està buit.")
                         errors.append(f"No s'ha pogut generar DXF per {original_image_name}: No hi ha camins vectoritzats.")
                     
+                    if export_csv and vectorized_paths:
+                        output_csv_filename = f"{base_name}__{mode}.csv"
+                        output_csv_path = os.path.join(output_dir, output_csv_filename)
+                        print(f"DEBUG: Condició CSV complerta: export_csv={export_csv}, vectorized_paths té {len(vectorized_paths)} camins.")
+                        self._export_csv_from_paths(output_csv_path, vectorized_paths, processed_img_np.shape[1], processed_img_np.shape[0], dpi, self.stitch_length_mm_var.get())
+                    elif export_csv and not vectorized_paths:
+                        print(f"DEBUG: Condició CSV no complerta: export_csv={export_csv}, vectorized_paths està buit.")
+                        errors.append(f"No s'ha pogut generar CSV per {original_image_name}: No hi ha camins vectoritzats.")
+
                     results.append({"original": original_image_name, "output_svg": output_svg_path, "status": "OK"})
                     processed_count += 1
                 else:
                     errors.append(f"Error en vectoritzar {original_image_name}.")
+                    print(f"DEBUG: Vectorització SVG fallida per {original_image_name}.")
 
             except Exception as e:
                 errors.append(f"Error crític processant {original_image_name}: {e}")
-                self.master.after(0, lambda name=original_image_name, err=e: self.status_bar.config(text=f"Error crític processant {name}: {err}"))
+                self.master.after(0, self._update_status_bar_text, f"Error crític processant {original_image_name}: {e}")
+                print(f"DEBUG: Excepció crítica en _export_batch_thread per {original_image_name}: {e}")
 
         self.master.after(0, self._finish_batch_export, processed_count, total_files, output_dir, results, errors)
 

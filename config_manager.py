@@ -21,7 +21,8 @@ DEFAULT_STANDARD_SETTINGS = {
     "stroke_mm_var": 0.1,
     "dpi_var": 96,
     "scale_preset_var": "Cap",
-    "last_folder": ""
+    "last_folder": "",
+    "stitch_length_mm_var": 1.0 # Nou paràmetre per a brodat
 }
 
 PRESETS = {
@@ -36,52 +37,56 @@ PRESETS = {
         "invert_var": False,
         "opening_radius_var": 1,
         "min_area_var": 200,
-        "scale_preset_var": "Cap"
+        "scale_preset_var": "Cap",
+        "stitch_length_mm_var": 1.0 # Afegim a tots els presets per tenir-lo sempre
     },
     "Làser - Tall (CUT)": {
         "mode_var": "outline",
-        "illum_sigma_var": 60.0, # Una mica més de neteja
+        "illum_sigma_var": 60.0,
         "median_filter_var": True,
         "clahe_var": False,
         "bin_method_var": "adaptive",
-        "block_size_var": 13, # Bloc una mica més gran
+        "block_size_var": 13,
         "C_var": 3,
         "invert_var": False,
-        "opening_radius_var": 0, # No opening per no tancar buits de tall
-        "min_area_var": 100, # Neteja de soroll
-        "scale_preset_var": "Amplada 20mm"
+        "opening_radius_var": 0,
+        "min_area_var": 100,
+        "scale_preset_var": "Amplada 20mm",
+        "stitch_length_mm_var": 1.0 # Afegim a tots els presets
     },
     "Làser - Marcat / Gravat (SCORE)": {
         "mode_var": "centerline",
-        "illum_sigma_var": 50.0, # Augmentem sigma per netejar més el fons
-        "median_filter_var": True, # Activem filtre median per reduir soroll
+        "illum_sigma_var": 50.0,
+        "median_filter_var": True,
         "clahe_var": True,
         "bin_method_var": "adaptive",
-        "block_size_var": 11, # Mantenim un bloc raonable
-        "C_var": 2, # Mantenim C neutre
+        "block_size_var": 11,
+        "C_var": 2,
         "invert_var": False,
-        "opening_radius_var": 0, # No opening per no afectar línies fines
-        "min_area_var": 30, # Augmentem per eliminar petits punts de soroll
+        "opening_radius_var": 0,
+        "min_area_var": 30,
         "prune_short_var": 2.0,
         "simplification_epsilon_var": 1.0,
         "stroke_mm_var": 0.05,
-        "scale_preset_var": "Cap"
+        "scale_preset_var": "Cap",
+        "stitch_length_mm_var": 1.0 # Afegim a tots els presets
     },
     "Brodat (Running Stitch)": {
         "mode_var": "centerline",
-        "illum_sigma_var": 50.0, # Augmentem sigma per netejar més el fons
-        "median_filter_var": True, # Activem filtre median
+        "illum_sigma_var": 50.0,
+        "median_filter_var": True,
         "clahe_var": False,
         "bin_method_var": "adaptive",
         "block_size_var": 13,
         "C_var": 3,
         "invert_var": False,
         "opening_radius_var": 1,
-        "min_area_var": 50, # Augmentem per eliminar petits fragments
+        "min_area_var": 50,
         "prune_short_var": 3.0,
         "simplification_epsilon_var": 1.5,
         "stroke_mm_var": 0.2,
-        "scale_preset_var": "Cap"
+        "scale_preset_var": "Cap",
+        "stitch_length_mm_var": 2.5 # Valor recomanat per a brodat bàsic
     }
 }
 
