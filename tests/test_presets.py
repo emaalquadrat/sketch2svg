@@ -33,12 +33,12 @@ _stub_module('svg.path', {
 svg_module.path = sys.modules['svg.path']
 
 import config_manager
-from main import Sketch2SVGApp
+from main import TramaMakerConversor2dApp
 
 
 def create_app_without_gui():
     tcl = tk.Tcl()
-    app = Sketch2SVGApp.__new__(Sketch2SVGApp)
+    app = TramaMakerConversor2dApp.__new__(TramaMakerConversor2dApp)
     app.mode_var = tk.StringVar(master=tcl)
     app.batch_aggressive_var = tk.BooleanVar(master=tcl)
     app.preset_profile_var = tk.StringVar(master=tcl)

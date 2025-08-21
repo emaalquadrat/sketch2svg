@@ -1,4 +1,4 @@
-# Sketch2SVG
+# Trama Maker Conversor 2d
 
 Aplicació d'escriptori per convertir fotos d'esbossos a SVG amb presets educatius.
 

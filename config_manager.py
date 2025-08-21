@@ -1,7 +1,7 @@
 import json
 import os
 
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".sketch2svgrc.json")
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".trama_maker_conversor_2drc.json")
 
 DEFAULT_STANDARD_SETTINGS = {
     "mode_var": "outline",
