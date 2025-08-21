@@ -77,10 +77,18 @@ class Sketch2SVGApp:
 
         self.dpi_var = tk.IntVar()
         self.scale_preset_var = tk.StringVar()
-        self.scale_preset_options = ["Cap", "Alçada 20mm", "Alçada 25mm", "Alçada 30mm", "Amplada 20mm", "Amplada 25mm", "Amplada 30mm"]
+        self.scale_preset_options = [
+            "Cap", "Alçada 20mm", "Alçada 25mm", "Alçada 30mm",
+            "Amplada 20mm", "Amplada 25mm", "Amplada 30mm"
+        ]
         self.scale_preset_values = {
-            "none": None, "Alçada 20mm": ("height", 20), "Alçada 25mm": ("height", 25), "Alçada 30mm": ("height", 30),
-            "Amplada 20mm": ("width", 20), "Amplada 25mm": ("width", 25), "Amplada 30mm": ("width", 30)
+            "Cap": None,
+            "Alçada 20mm": ("height", 20),
+            "Alçada 25mm": ("height", 25),
+            "Alçada 30mm": ("height", 30),
+            "Amplada 20mm": ("width", 20),
+            "Amplada 25mm": ("width", 25),
+            "Amplada 30mm": ("width", 30),
         }
 
         self.canvas = tk.Canvas(master, bg=COLORS["Nexe_50"], highlightthickness=0)
@@ -680,7 +688,7 @@ class Sketch2SVGApp:
             img_height, img_width = binarized_image_np.shape
             stroke_width_mm = self.stroke_mm_var.get()
             dpi = self.dpi_var.get()
-            scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get(), (None, None))
+            scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get())
             
             target_width_mm = None
             target_height_mm = None
@@ -931,7 +939,7 @@ class Sketch2SVGApp:
                 
                 if success_svg:
                     dpi = self.dpi_var.get()
-                    scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get(), (None, None))
+                    scale_preset_tuple = self.scale_preset_values.get(self.scale_preset_var.get())
                     
                     target_width_mm = None
                     target_height_mm = None
