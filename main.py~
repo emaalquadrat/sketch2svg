@@ -1,3 +1,9 @@
+from PySide6.QtGui import QIcon
+import sys, os
+def resource_path(p): 
+    base = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
+    return os.path.join(base, p)
+
 import tkinter as tk
 from tkinter import filedialog, ttk
 from PIL import Image, ImageTk
@@ -14,15 +20,9 @@ from bs4 import BeautifulSoup
 import ezdxf
 import re
 import csv
-import sys
 
 from skimage.morphology import skeletonize as sk_skeletonize
 from svg.path import parse_path, Line, CubicBezier, QuadraticBezier, Arc # Importem tipus de segments per a parsing
-
-def resource_path(rel_path: str) -> str:
-    # Quan s’executa empaquetat amb PyInstaller, els recursos viuen a _MEIPASS
-    base = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
-    return os.path.join(base, rel_path)
 
 # --- Colors Corporatius emaalquadrat Nexe ---
 COLORS = {
@@ -50,10 +50,10 @@ FONTS = {
     "UI_Tooltip": ("Inter", 8, "normal")
 }
 
-class TramaMakerConversor2dApp:
+class Sketch2SVGApp:
     def __init__(self, master):
         self.master = master
-        master.title("Trama Maker Conversor 2d")
+        master.title("Sketch2SVG")
         master.geometry("1000x700")
         master.configure(bg=COLORS["Nexe_50"])
 
@@ -128,7 +128,7 @@ class TramaMakerConversor2dApp:
         self.control_frame.grid_columnconfigure(2, weight=0, minsize=50)
 
 
-        ttk.Label(self.control_frame, text="Controls de Trama Maker Conversor 2d", font=FONTS["Title"], foreground=COLORS["Nexe_800"]).grid(row=0, column=0, columnspan=3, pady=(0, 20), sticky="ew")
+        ttk.Label(self.control_frame, text="Controls de Sketch2SVG", font=FONTS["Title"], foreground=COLORS["Nexe_800"]).grid(row=0, column=0, columnspan=3, pady=(0, 20), sticky="ew")
 
         self.add_section_title(self.control_frame, "Configuració General", 1)
 
@@ -1261,13 +1261,6 @@ if __name__ == "__main__":
     style.map("TMenubutton",
               background=[('active', COLORS["Nexe_200"])])
 
-# --- Icona finestra (PNG) ---
-try:
-    icon_png = resource_path("icons/trama_pont2d.png")   # posa-hi el teu nom de fitxer
-    root.iconphoto(True, tk.PhotoImage(file=icon_png))
-except Exception as e:
-    # No parem l’app si la icona no hi és
-    print(f"AVÍS: no s'ha pogut carregar la icona PNG: {e}")
 
-    app = TramaMakerConversor2dApp(root)
+    app = Sketch2SVGApp(root)
     root.mainloop()
