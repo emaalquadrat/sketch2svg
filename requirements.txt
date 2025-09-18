@@ -1,0 +1,7 @@
+opencv-python
+Pillow
+numpy
+beautifulsoup4
+ezdxf
+scikit-image
+svg.path
