@@ -1,7 +1,7 @@
 # Sketch2SVG · Trama Maker
 
 [![Tests](https://github.com/emaalquadrat/sketch2svg/actions/workflows/tests.yml/badge.svg)](https://github.com/emaalquadrat/sketch2svg/actions/workflows/tests.yml)
-[![Llicència: MIT](https://img.shields.io/badge/llic%C3%A8ncia-MIT-green.svg)](LICENSE)
+[![Llicència: GPL v3 o posterior](https://img.shields.io/badge/llic%C3%A8ncia-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 **De l'esbós al vector.** Fes una foto d'un dibuix fet a mà i converteix-lo en un fitxer vectorial (SVG, DXF o CSV) llest per a la talladora làser, el plotter, la brodadora o un programa de modelat 3D.
 
@@ -99,4 +99,6 @@ Aquest va ser el primer programa d'en Miquel, fet per aprendre Git i GitHub ment
 
 ## Llicència
 
-[MIT](LICENSE). Pots fer-lo servir, modificar-lo i compartir-lo lliurement, també en centres educatius.
+[GNU GPL v3 o posterior](LICENSE) (GPL-3.0-or-later). Pots fer-lo servir, estudiar-lo, modificar-lo i compartir-lo lliurement, també en centres educatius. Si en distribueixes una versió, modificada o no, ha de continuar sent lliure: amb el codi font i amb aquesta mateixa llicència.
+
+Copyright © 2025-2026 Ema al quadrat.

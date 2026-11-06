@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 Ema al quadrat
 """Sketch2SVG — interfície gràfica (Tkinter).
 
 Tot el càlcul és a `nucli.py`; aquí només hi ha la finestra.

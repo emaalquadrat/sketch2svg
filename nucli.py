@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 Ema al quadrat
 """Nucli de Sketch2SVG: processament d'imatge i vectorització, sense interfície.
 
 Totes les funcions treballen amb un diccionari de paràmetres amb les mateixes

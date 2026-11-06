@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 Ema al quadrat
 """Sketch2SVG des de la terminal (sense interfície gràfica).
 
 Exemples:
