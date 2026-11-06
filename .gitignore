@@ -1,19 +1,22 @@
-# Entorn virtual de Python
+# Entorn virtual i memòria cau de Python
+.venv/
 venv/
 __pycache__/
 *.pyc
 .pytest_cache/
-.venv/
 
-# Fitxers de sistema operatiu
+# Còpies de seguretat d'editors
+*~
+*.swp
+
+# Fitxers de sistema
 .DS_Store
 Thumbs.db
 
-# Fitxers de configuració local
-# *.json # Descomenta si vols ignorar tots els JSON per defecte
-!config.json # Manté aquest fitxer si vols que la configuració de l'app es gestioni per Git
+# Resultats generats
+output_vector/
 
-# Fitxers temporals/logs
-*.log
-*.tmp
-output_svg/ # Ignora la carpeta de sortida dels SVGs
+# Empaquetat
+build/
+dist/
+*.spec

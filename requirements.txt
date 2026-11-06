@@ -1,7 +1,7 @@
-opencv-python
-Pillow
-numpy
-beautifulsoup4
-ezdxf
-scikit-image
-svg.path
+opencv-python-headless>=4.8
+Pillow>=10
+numpy>=1.24
+scipy>=1.10
+scikit-image>=0.21
+svg.path>=6.2
+ezdxf>=1.1
