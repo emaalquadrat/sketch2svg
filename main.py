@@ -23,13 +23,29 @@ COLORS = {"Nexe_50": "#EFF1EF", "Nexe_100": "#DFE2DF", "Nexe_200": "#C4CAC4", "N
 FONTS = {"Title": ("Fraunces", 16, "bold"), "SectionTitle": ("Fraunces", 12, "bold"), "UI_Label": ("Inter", 10),
          "UI_Button": ("Inter", 10, "bold"), "UI_Small": ("Inter", 9), "UI_Tooltip": ("Inter", 9)}
 
-TITOL = "Sketch2SVG · Trama Maker"
+TITOL = f"Sketch2SVG {nucli.VERSIO} · Trama Maker"
 
 
 def recurs(rel):
     """Ruta a un fitxer de l'aplicació (també dins d'un executable de PyInstaller)."""
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, rel)
+
+
+def entorn_del_sistema():
+    """Entorn per obrir programes del sistema des de l'executable empaquetat.
+
+    PyInstaller canvia LD_LIBRARY_PATH perquè el programa trobi les seves
+    llibreries; l'explorador de fitxers ha de fer servir les del sistema.
+    """
+    entorn = dict(os.environ)
+    if getattr(sys, "frozen", False):
+        original = entorn.pop("LD_LIBRARY_PATH_ORIG", None)
+        if original is not None:
+            entorn["LD_LIBRARY_PATH"] = original
+        else:
+            entorn.pop("LD_LIBRARY_PATH", None)
+    return entorn
 
 
 class Sketch2SVGApp:
@@ -399,7 +415,7 @@ class Sketch2SVGApp:
                 elif sys.platform == "darwin":
                     subprocess.Popen(["open", out_dir])
                 else:
-                    subprocess.Popen(["xdg-open", out_dir])
+                    subprocess.Popen(["xdg-open", out_dir], env=entorn_del_sistema())
             except Exception:  # noqa: BLE001 — obrir la carpeta és opcional
                 pass
 
@@ -444,7 +460,7 @@ def aplica_estil(root):
 
 
 def main():
-    root = tk.Tk()
+    root = tk.Tk(className="Sketch2SVG")
     try:
         root.iconphoto(True, tk.PhotoImage(file=recurs(os.path.join("icons", "trama_pont_2d.png"))))
     except tk.TclError:
@@ -455,4 +471,13 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        # Amb arguments, el mateix executable fa de versió de terminal
+        # (així es pot provar l'executable empaquetat sense obrir la finestra).
+        if sys.stdout is None:  # executable de Windows sense consola
+            sys.stdout = open(os.devnull, "w")
+        if sys.stderr is None:
+            sys.stderr = open(os.devnull, "w")
+        import cli
+        sys.exit(cli.main())
     main()

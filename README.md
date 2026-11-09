@@ -45,9 +45,22 @@ Pensat per a aules i tallers *maker*: l'alumnat dibuixa en paper, el docent fa l
 - **Dibuix clar sobre fons fosc (pissarra):** activa *Inverteix colors*.
 - **Per tallar amb làser, la forma ha d'estar tancada.** Si a la vista prèvia una part surt amb doble línia, és que el traç no arriba a tocar: repassa'l amb el llapis o el retolador i torna a fer la foto.
 
-## Instal·lació
+## Descarrega i fes doble clic
 
-> Aviat hi haurà versions per descarregar i fer doble clic (Windows i Linux) a la secció [Releases](https://github.com/emaalquadrat/sketch2svg/releases). Mentrestant, cal instal·lar-lo amb Python.
+No cal instal·lar Python ni res més: el programa ho porta tot a dins.
+
+**[⬇ Descarrega l'última versió](https://github.com/emaalquadrat/sketch2svg/releases/latest)** i tria el fitxer del teu ordinador:
+
+| El teu ordinador | Fitxer |
+|---|---|
+| **Windows** | `Sketch2SVG-…-Windows.exe`: doble clic i ja s'obre |
+| **Ubuntu, Linkat o Debian** | `sketch2svg_…_amd64.deb`: doble clic → **Instal·la**, i el trobaràs al menú d'aplicacions |
+| **Un altre Linux** | `Sketch2SVG-…-Linux`: clic dret → Propietats → Permisos → **Permet executar**, i doble clic |
+
+- **Windows** pot mostrar el primer cop l'avís blau «Windows ha protegit l'ordinador». Surt amb tots els programes petits que no paguen una signatura digital: prem **Més informació** → **Executa igualment**.
+- El primer cop pot trigar uns segons a obrir-se.
+
+## Instal·lació amb Python (per a qui vulgui tocar el codi)
 
 Cal **Python 3.10 o més nou** i el programa **potrace**.
 
@@ -96,6 +109,7 @@ També es pot fer servir sense finestra, per exemple per automatitzar-lo:
 - `cli.py`: la versió per a terminal.
 - `config_manager.py`: perfils d'ús i configuració desada (a `~/.trama_maker_conversor_2drc.json`).
 - `tests/`: proves automàtiques (`pip install pytest` i `pytest`).
+- `sketch2svg.spec` i `empaqueta/`: com es fan els executables. GitHub els construeix, els prova i els publica a Releases cada vegada que es puja una etiqueta de versió (`v1.0.0`...).
 
 Aquest va ser el primer programa d'en Miquel, fet per aprendre Git i GitHub mentre resolia una necessitat real de taller. Si el fas servir a l'aula o el millores, ens agradarà saber-ho: [emaalquadrat.cat](https://emaalquadrat.cat).
 

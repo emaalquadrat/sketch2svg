@@ -18,6 +18,7 @@ import nucli
 def main(argv=None):
     perfils = config_manager.get_preset_names()
     ap = argparse.ArgumentParser(description="Converteix fotos d'esbossos a SVG (i DXF o CSV segons el perfil).")
+    ap.add_argument("--version", action="version", version=f"Sketch2SVG {nucli.VERSIO}")
     ap.add_argument("entrada", help="Una imatge o una carpeta amb imatges")
     ap.add_argument("--perfil", default=perfils[0], choices=perfils, help="Perfil d'ús")
     ap.add_argument("--escala", choices=list(nucli.ESCALES), help="Mida final (substitueix la del perfil)")

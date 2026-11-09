@@ -27,6 +27,8 @@ from scipy.spatial import cKDTree
 from skimage.morphology import skeletonize
 from svg.path import Move, parse_path
 
+VERSIO = "1.0.0"
+
 EXTENSIONS_IMATGE = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff")
 
 ESCALES = {
@@ -198,6 +200,24 @@ def ruta_potrace():
     return shutil.which("potrace")
 
 
+def _opcions_potrace():
+    """Opcions per executar potrace dins de l'executable empaquetat.
+
+    - Windows: sense obrir una finestra de terminal a cada imatge.
+    - Linux: que trobi la seva llibreria (libpotrace) dins del paquet.
+    """
+    opcions = {}
+    if os.name == "nt":
+        opcions["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    paquet = getattr(sys, "_MEIPASS", "")
+    if paquet and sys.platform.startswith("linux"):
+        entorn = dict(os.environ)
+        entorn["LD_LIBRARY_PATH"] = os.pathsep.join(
+            c for c in (paquet, entorn.get("LD_LIBRARY_PATH", "")) if c)
+        opcions["env"] = entorn
+    return opcions
+
+
 def potrace_disponible():
     return ruta_potrace() is not None
 
@@ -265,7 +285,7 @@ def traca_contorn(binaria):
             raise Sketch2SVGError("No s'ha pogut preparar la imatge per a potrace.")
         buf.tofile(tmp)
         res = subprocess.run([ruta_potrace(), tmp, "-b", "svg", "-o", "-"],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, **_opcions_potrace())
         if res.returncode != 0:
             raise Sketch2SVGError(f"potrace ha fallat: {res.stderr.strip()}")
     finally:

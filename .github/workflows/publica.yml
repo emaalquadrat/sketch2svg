@@ -1,0 +1,114 @@
+# Construeix els executables de Windows i Linux, els prova i, si la pujada
+# és d'una etiqueta de versió (p. ex. v1.0.0), els publica a Releases.
+#
+# Per publicar una versió nova:
+#   1. Canvia VERSIO a nucli.py.
+#   2. git tag v1.2.3 && git push origin v1.2.3
+#
+# Des de la pestanya Actions també es pot llançar a mà («Run workflow») per
+# construir i provar els executables sense publicar res.
+name: Publica versió
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYINSTALLER: "pyinstaller==6.22.3"
+  POTRACE_WIN_URL: "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip"
+  POTRACE_WIN_SHA256: "63699f9885b5ed053977fd94452a7bdbb77ee62b77bf28a3f17b2f14b9b9c65d"
+
+jobs:
+  linux:
+    # La versió d'Ubuntu més antiga possible, perquè l'executable funcioni
+    # també en ordinadors de centre amb sistemes de fa uns anys (Linkat...).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instal·la potrace
+        run: sudo apt-get update && sudo apt-get install -y potrace
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt "$PYINSTALLER"
+      - name: Versió
+        id: versio
+        run: |
+          v=$(python -c "import nucli; print(nucli.VERSIO)")
+          echo "versio=$v" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$v" ]]; then
+            echo "L'etiqueta $GITHUB_REF_NAME no coincideix amb VERSIO=$v de nucli.py"; exit 1
+          fi
+      - name: Construeix l'executable
+        run: pyinstaller --noconfirm --clean sketch2svg.spec
+      - name: Treu potrace del sistema (l'executable ha de portar el seu)
+        run: sudo apt-get remove -y potrace libpotrace0
+      - name: Prova l'executable
+        run: python empaqueta/prova_executable.py dist/Sketch2SVG
+      - name: Fes el paquet .deb
+        run: empaqueta/fes-deb.sh "${{ steps.versio.outputs.versio }}" dist/Sketch2SVG
+      - name: Posa nom a l'executable
+        run: mv dist/Sketch2SVG "dist/Sketch2SVG-${{ steps.versio.outputs.versio }}-Linux"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/*.deb
+            dist/Sketch2SVG-*-Linux
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Descarrega potrace (versió oficial, comprovada)
+        run: |
+          curl -sSfL -o potrace.zip "$POTRACE_WIN_URL"
+          echo "$POTRACE_WIN_SHA256  potrace.zip" | sha256sum -c -
+          unzip -q potrace.zip
+          echo "POTRACE=$PWD/potrace-1.16.win64/potrace.exe" >> "$GITHUB_ENV"
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt "$PYINSTALLER"
+      - name: Versió
+        id: versio
+        run: echo "versio=$(python -c 'import nucli; print(nucli.VERSIO)')" >> "$GITHUB_OUTPUT"
+      - name: Construeix l'executable
+        run: pyinstaller --noconfirm --clean sketch2svg.spec
+      - name: Prova l'executable
+        run: python empaqueta/prova_executable.py dist/Sketch2SVG.exe
+      - name: Posa nom a l'executable
+        run: mv dist/Sketch2SVG.exe "dist/Sketch2SVG-${{ steps.versio.outputs.versio }}-Windows.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/Sketch2SVG-*-Windows.exe
+
+  publica:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Crea la versió a Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Sketch2SVG ${GITHUB_REF_NAME#v}" \
+            --notes-file empaqueta/notes-versio.md
