@@ -210,3 +210,71 @@ def test_preset_inexistent_dona_valors_per_defecte():
     cfg = config_manager.get_preset_settings("Preset Inexistent")
     assert cfg == config_manager.DEFAULT_STANDARD_SETTINGS
     assert cfg is not config_manager.DEFAULT_STANDARD_SETTINGS
+
+
+# --- Proves amb fotos reals (2026-11-09) --------------------------------------
+
+def esbos_amb_traç_fluix():
+    """Paper gris amb un traç fosc i un altre de llapis molt fluix."""
+    img = np.full((300, 400), 200, np.uint8)
+    cv2.line(img, (40, 80), (360, 80), 60, 4)     # traç fosc
+    cv2.line(img, (40, 220), (360, 220), 165, 3)  # traç fluix
+    return img
+
+
+@pytest.mark.parametrize("preset", config_manager.get_preset_names())
+def test_traç_fluix_no_es_perd(preset):
+    binaria = nucli.preprocessa(esbos_amb_traç_fluix(), params(preset, silhouette_var=False))
+    assert binaria[80, 200] == 255    # el fosc hi és
+    assert binaria[220, 200] == 255   # i el fluix també
+
+
+def test_combinat_no_buida_traços_gruixuts():
+    img = np.full((200, 300), 230, np.uint8)
+    cv2.line(img, (30, 100), (270, 100), 40, 31)
+    binaria = nucli.preprocessa(img, params(bin_method_var="combinat"))
+    assert binaria[88:113, 150].all()
+
+
+def test_escala_mesura_el_dibuix_no_la_foto(tmp_path):
+    img = np.full((1000, 1000), 235, np.uint8)
+    cv2.rectangle(img, (400, 400), (600, 500), 30, 6)   # dibuix petit al mig del full
+    path = desa(tmp_path, img)
+    p = params("Làser - Marcat / Gravat (SCORE)", scale_preset_var="Amplada 20mm")
+    svg = nucli.processa_fitxer(path, p, os.path.join(tmp_path, "out"), "Làser - Marcat / Gravat (SCORE)")[0]
+    arrel = ET.parse(svg).getroot()
+    assert arrel.get("width") == "20.000mm"
+    alcada = float(arrel.get("height").removesuffix("mm"))
+    assert 9.5 < alcada < 11   # proporció del rectangle (~206 x 106 px), no la del full
+
+
+def test_silueta_omple_l_interior():
+    img = np.full((300, 300), 235, np.uint8)
+    cv2.rectangle(img, (50, 50), (250, 250), 30, 5)
+    cv2.line(img, (50, 150), (250, 150), 30, 5)          # línia interior
+    binaria = nucli.preprocessa(img, params("Làser - Tall (CUT)"))
+    assert binaria[100, 150] == 255   # l'interior queda ple: només es talla la vora
+    assert binaria[20, 20] == 0
+
+
+def test_tall_laser_dona_un_sol_contorn_per_peça(tmp_path):
+    if not nucli.potrace_disponible():
+        pytest.skip("potrace no instal·lat")
+    img = np.full((300, 300), 235, np.uint8)
+    cv2.rectangle(img, (50, 50), (250, 250), 30, 5)
+    cv2.line(img, (50, 150), (250, 150), 30, 5)
+    binaria = nucli.preprocessa(img, params("Làser - Tall (CUT)"))
+    polilinies, _ = nucli.vectoritza(binaria, params("Làser - Tall (CUT)"))
+    assert len(polilinies) == 1
+
+
+@pytest.mark.parametrize("preset", config_manager.get_preset_names())
+def test_textura_del_paper_no_fa_soroll(preset):
+    """Paper amb gra (com una foto de mòbil): només ha de quedar el dibuix."""
+    rng = np.random.default_rng(1)
+    img = np.clip(rng.normal(200, 6, (600, 600)), 0, 255).astype(np.uint8)
+    cv2.rectangle(img, (250, 250), (350, 350), 60, 4)
+    binaria = nucli.preprocessa(img, params(preset))
+    files, columnes = np.nonzero(binaria)
+    assert files.min() >= 240 and files.max() <= 360
+    assert columnes.min() >= 240 and columnes.max() <= 360

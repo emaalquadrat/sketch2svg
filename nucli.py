@@ -84,17 +84,17 @@ def preprocessa(img_gray, p):
     if p["clahe_var"]:
         img = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(img)
 
-    if p["bin_method_var"] == "otsu":
+    metode = p["bin_method_var"]
+    if metode == "combinat":
+        # Proves amb fotos reals (2026-11-09): Otsu sol perd el llapis fluix i
+        # l'adaptatiu sol buida els traços gruixuts. Junts, un cobreix l'altre.
+        binaria = cv2.bitwise_or(_otsu(img), _adaptativa(img, p))
+    elif metode == "otsu":
         # Després de corregir la il·luminació, un llindar automàtic (Otsu) separa
         # bé traç i paper i no buida els traços gruixuts com l'adaptatiu.
-        _, binaria = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    elif p["bin_method_var"] == "adaptive":
-        bloc = max(3, int(p["block_size_var"]))
-        if bloc % 2 == 0:
-            bloc += 1
-        binaria = cv2.adaptiveThreshold(
-            img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
-            bloc, int(p["C_var"]))
+        binaria = _otsu(img)
+    elif metode == "adaptive":
+        binaria = _adaptativa(img, p)
     else:
         _, binaria = cv2.threshold(img, int(p["threshold_var"]), 255, cv2.THRESH_BINARY_INV)
 
@@ -119,7 +119,52 @@ def preprocessa(img_gray, p):
         forats = np.where(stats[1:, cv2.CC_STAT_AREA] < area_min)[0] + 1
         if forats.size:
             binaria[np.isin(etiquetes, forats)] = 255
+
+    if p.get("silhouette_var"):
+        binaria = silueta(binaria)
     return binaria
+
+
+def _otsu(img):
+    _, binaria = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    return binaria
+
+
+def _adaptativa(img, p):
+    bloc = max(3, int(p["block_size_var"]))
+    if bloc % 2 == 0:
+        bloc += 1
+    return cv2.adaptiveThreshold(
+        img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
+        bloc, int(p["C_var"]))
+
+
+def silueta(binaria, radi_tancament=None):
+    """Omple cada forma tancada perquè només en quedi la vora exterior.
+
+    Per al tall làser: es talla la peça sencera i les línies interiors no es
+    tallen (per a això hi ha el perfil de gravat). Abans d'omplir es tanquen
+    els petits forats del traç, perquè una línia mal tancada no deixi la forma
+    oberta.
+    """
+    if radi_tancament is None:
+        # Proporcional a la foto: uns 10 px en una foto de mòbil de 1920 px.
+        radi_tancament = max(3, round(0.005 * max(binaria.shape)))
+    nucli_m = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (2 * radi_tancament + 1, 2 * radi_tancament + 1))
+    tancada = cv2.morphologyEx(binaria, cv2.MORPH_CLOSE, nucli_m)
+    contorns, _ = cv2.findContours(tancada, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    plena = np.zeros_like(binaria)
+    cv2.drawContours(plena, contorns, -1, 255, thickness=cv2.FILLED)
+    return plena
+
+
+def retalla_al_dibuix(binaria):
+    """Retalla el paper buit del voltant perquè l'escala es mesuri sobre el dibuix."""
+    files, columnes = np.nonzero(binaria)
+    if files.size == 0:
+        return binaria
+    return binaria[files.min():files.max() + 1, columnes.min():columnes.max() + 1]
 
 
 # --------------------------------------------------------------------------
@@ -455,7 +500,7 @@ def vectoritza(binaria, p):
 
 def processa_fitxer(path_imatge, p, carpeta_sortida, preset=""):
     """Converteix una imatge i desa els fitxers. Retorna la llista de fitxers creats."""
-    binaria = preprocessa(llegeix_gris(path_imatge), p)
+    binaria = retalla_al_dibuix(preprocessa(llegeix_gris(path_imatge), p))
     h, w = binaria.shape
     mmpp = mm_per_px(w, h, p["dpi_var"], p["scale_preset_var"])
     polilinies, contorn = vectoritza(binaria, p)

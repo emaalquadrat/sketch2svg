@@ -165,6 +165,7 @@ class Sketch2SVGApp:
         ttk.Label(frame, text="Mode de vectorització:").pack(fill="x", pady=(10, 2))
         ttk.Radiobutton(frame, text="Contorn (tall làser, modelat 3D)", variable=self.mode_var, value="outline", command=self.update_parameters_visibility).pack(anchor="w")
         ttk.Radiobutton(frame, text="Traç únic (gravat, plotter, brodat)", variable=self.mode_var, value="centerline", command=self.update_parameters_visibility).pack(anchor="w")
+        ttk.Checkbutton(frame, text="Només la silueta exterior (tall làser)", variable=self.silhouette_var, command=self.preview_image).pack(anchor="w", pady=(5, 0))
 
     def _create_preprocessing_section(self):
         frame = ttk.Frame(self.control_frame)
@@ -174,7 +175,8 @@ class Sketch2SVGApp:
         ttk.Checkbutton(frame, text="Filtre de mediana (redueix soroll)", variable=self.median_filter_var, command=self.preview_image).pack(anchor="w")
         ttk.Checkbutton(frame, text="CLAHE (millora el contrast)", variable=self.clahe_var, command=self.preview_image).pack(anchor="w")
         ttk.Label(frame, text="Tipus de binarització:").pack(fill="x", pady=(10, 2))
-        ttk.Radiobutton(frame, text="Automàtica (recomanada)", variable=self.bin_method_var, value="otsu", command=self.preview_image).pack(anchor="w")
+        ttk.Radiobutton(frame, text="Combinada (recomanada: llapis fluix i traç gruixut)", variable=self.bin_method_var, value="combinat", command=self.preview_image).pack(anchor="w")
+        ttk.Radiobutton(frame, text="Automàtica (traç fosc i net)", variable=self.bin_method_var, value="otsu", command=self.preview_image).pack(anchor="w")
         ttk.Radiobutton(frame, text="Adaptativa (traços molt fins, llum molt desigual)", variable=self.bin_method_var, value="adaptive", command=self.preview_image).pack(anchor="w")
         ttk.Radiobutton(frame, text="Global (escanejats nets)", variable=self.bin_method_var, value="global", command=self.preview_image).pack(anchor="w")
         self.add_slider(frame, "Llindar global:", self.threshold_var, 0, 255, 1, "Nivell de gris que separa traç i fons (només binarització global).")

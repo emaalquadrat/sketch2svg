@@ -16,13 +16,14 @@ Pensat per a aules i tallers *maker*: l'alumnat dibuixa en paper, el docent fa l
 | Perfil d'ús | Mode | Fitxers que genera | Per a què |
 |---|---|---|---|
 | Dibuix / Modelat 3D (Extrusió) | Contorn | SVG | Importar a Fusion 360, Tinkercad, Inkscape… |
-| Làser - Tall (CUT) | Contorn | SVG + DXF (capa `CUT`, vermell) | Tallar la silueta del dibuix |
+| Làser - Tall (CUT) | Contorn (només silueta) | SVG + DXF (capa `CUT`, vermell) | Tallar la peça sencera per la vora exterior |
 | Làser - Marcat / Gravat (SCORE) | Traç únic | SVG + DXF (capa `SCORE`, blau) | Gravar les línies del dibuix |
 | Brodat (Running Stitch) | Traç únic | SVG + CSV de puntades | Brodadores o plotters que llegeixen coordenades |
 
 - **Contorn:** ressegueix les vores de cada traç (amb [potrace](https://potrace.sourceforge.net/)). Dona corbes suaus i formes tancades.
 - **Traç únic:** troba la línia central de cada traç, com si es repassés amb un sol bolígraf.
-- **Mida real:** tria «Amplada 20 mm», «Alçada 30 mm»… i el fitxer surt directament a aquesta mida, o fes servir els DPI de la foto.
+- **Mida real:** tria «Amplada 20 mm», «Alçada 30 mm»… i el dibuix (no el full) surt directament a aquesta mida, o fes servir els DPI de la foto.
+- **Silueta per al tall:** el perfil de tall només talla la vora exterior de cada forma; les línies de dins es graven amb el perfil de marcat.
 - **Per lots:** converteix tota una carpeta d'esbossos d'un sol cop.
 
 ![Captura de la finestra del programa](docs/captura.png)
@@ -38,10 +39,11 @@ Pensat per a aules i tallers *maker*: l'alumnat dibuixa en paper, el docent fa l
 
 ### Consells si el resultat no és bo
 
-- **Apareixen taques o punts:** puja l'*Àrea mínima* o activa el *Filtre de mediana*.
-- **Es perden traços fins o fluixos:** prova la binarització *Adaptativa* o puja el *Contrast*.
+- **Apareixen taques o punts:** puja l'*Àrea mínima* o el *Contrast (adapt.)*. El *Filtre de mediana* també neteja, però pot esborrar traços de llapis fins.
+- **Es perden traços fins o fluixos:** comprova que la binarització sigui *Combinada* i baixa el *Contrast (adapt.)*.
 - **La foto té ombres:** puja la *Correcció d'il·luminació*.
 - **Dibuix clar sobre fons fosc (pissarra):** activa *Inverteix colors*.
+- **Per tallar amb làser, la forma ha d'estar tancada.** Si a la vista prèvia una part surt amb doble línia, és que el traç no arriba a tocar: repassa'l amb el llapis o el retolador i torna a fer la foto.
 
 ## Instal·lació
 
