@@ -22,15 +22,16 @@ def main(argv=None):
     ap.add_argument("entrada", help="Una imatge o una carpeta amb imatges")
     ap.add_argument("--perfil", default=perfils[0], choices=perfils, help="Perfil d'ús")
     ap.add_argument("--escala", choices=list(nucli.ESCALES), help="Mida final (substitueix la del perfil)")
-    ap.add_argument("--dpi", type=int, help="Resolució de la foto si l'escala és «Cap»")
+    ap.add_argument("--detall", choices=list(nucli.DETALLS),
+                    help="Detall del contorn: Normal (0,1 mm, per defecte), Fi (0,05 mm) o Màxim (sense reduir)")
     ap.add_argument("--sortida", help="Carpeta de sortida (per defecte, «output_vector» al costat de les imatges)")
     args = ap.parse_args(argv)
 
     p = config_manager.get_preset_settings(args.perfil)
     if args.escala:
         p["scale_preset_var"] = args.escala
-    if args.dpi:
-        p["dpi_var"] = args.dpi
+    if args.detall:
+        p["detail_var"] = args.detall
 
     if os.path.isdir(args.entrada):
         fitxers, base = nucli.llista_imatges(args.entrada), args.entrada
@@ -45,8 +46,11 @@ def main(argv=None):
     errors = 0
     for path in fitxers:
         try:
-            creats = nucli.processa_fitxer(path, p, sortida, args.perfil)
+            avisos = []
+            creats = nucli.processa_fitxer(path, p, sortida, args.perfil, avisos)
             print(f"OK  {os.path.basename(path)} -> {', '.join(os.path.basename(c) for c in creats)}")
+            for avis in avisos:
+                print(f"    AVÍS {avis}")
         except nucli.Sketch2SVGError as e:
             errors += 1
             print(f"ERR {os.path.basename(path)}: {e}", file=sys.stderr)

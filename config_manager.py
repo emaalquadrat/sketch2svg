@@ -3,6 +3,13 @@
 import json
 import os
 
+# Còpia de les claus de `nucli.ESCALES` i `nucli.DETALLS` (sense importar
+# nucli, que carrega OpenCV); un test comprova que coincideixen.
+ESCALES_VALIDES = ("Amplada 20mm", "Amplada 25mm", "Amplada 30mm", "Amplada 40mm",
+                   "Amplada 50mm", "Amplada 100mm", "Alçada 20mm", "Alçada 25mm",
+                   "Alçada 30mm", "Alçada 40mm", "Alçada 50mm", "Alçada 100mm")
+DETALLS_VALIDS = ("Normal", "Fi", "Màxim")
+
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".trama_maker_conversor_2drc.json")
 
 DEFAULT_STANDARD_SETTINGS = {
@@ -19,11 +26,12 @@ DEFAULT_STANDARD_SETTINGS = {
     "opening_radius_var": 0,
     "min_area_var": 100,
     "silhouette_var": False,
+    "ignora_vores_var": True,
     "prune_short_var": 5.0,
     "simplification_epsilon_var": 2.0,
     "stroke_mm_var": 0.1,
-    "dpi_var": 96,
-    "scale_preset_var": "Cap",
+    "scale_preset_var": "Amplada 30mm",
+    "detail_var": "Normal",
     "last_folder": "",
     "stitch_length_mm_var": 1.0 # Nou paràmetre per a brodat
 }
@@ -40,7 +48,10 @@ PRESETS = {
         "invert_var": False,
         "opening_radius_var": 0,
         "min_area_var": 100,
-        "scale_preset_var": "Cap",
+        # Per extruir cal la peça plena, no les dues vores de cada línia (proves
+        # amb fotos reals, 2026-11-17), i una mida real.
+        "silhouette_var": True,
+        "scale_preset_var": "Amplada 30mm",
         "stitch_length_mm_var": 1.0 # Afegim a tots els presets per tenir-lo sempre
     },
     "Làser - Tall (CUT)": {
@@ -55,7 +66,7 @@ PRESETS = {
         "opening_radius_var": 0,
         "min_area_var": 100,
         "silhouette_var": True,
-        "scale_preset_var": "Amplada 20mm",
+        "scale_preset_var": "Amplada 30mm",
         "stitch_length_mm_var": 1.0 # Afegim a tots els presets
     },
     "Làser - Marcat / Gravat (SCORE)": {
@@ -72,7 +83,7 @@ PRESETS = {
         "prune_short_var": 2.0,
         "simplification_epsilon_var": 1.0,
         "stroke_mm_var": 0.05,
-        "scale_preset_var": "Cap",
+        "scale_preset_var": "Amplada 30mm",
         "stitch_length_mm_var": 1.0 # Afegim a tots els presets
     },
     "Brodat (Running Stitch)": {
@@ -89,7 +100,7 @@ PRESETS = {
         "prune_short_var": 3.0,
         "simplification_epsilon_var": 1.5,
         "stroke_mm_var": 0.2,
-        "scale_preset_var": "Cap",
+        "scale_preset_var": "Amplada 30mm",
         "stitch_length_mm_var": 2.5 # Valor recomanat per a brodat bàsic
     }
 }
@@ -102,6 +113,11 @@ def load_config():
             with open(CONFIG_FILE, 'r') as f:
                 saved_config = json.load(f)
                 config.update(saved_config)
+                # Valors d'una versió antiga (p. ex. l'escala «Cap»): els per defecte.
+                for clau, valides in (("scale_preset_var", ESCALES_VALIDES),
+                                      ("detail_var", DETALLS_VALIDS)):
+                    if config.get(clau) not in valides:
+                        config[clau] = DEFAULT_STANDARD_SETTINGS[clau]
         except json.JSONDecodeError:
             print(f"Error llegint el fitxer de configuració '{CONFIG_FILE}'. Es carregarà la configuració per defecte.")
         except Exception as e:

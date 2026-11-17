@@ -181,7 +181,7 @@ class Sketch2SVGApp:
         ttk.Label(frame, text="Mode de vectorització:").pack(fill="x", pady=(10, 2))
         ttk.Radiobutton(frame, text="Contorn (tall làser, modelat 3D)", variable=self.mode_var, value="outline", command=self.update_parameters_visibility).pack(anchor="w")
         ttk.Radiobutton(frame, text="Traç únic (gravat, plotter, brodat)", variable=self.mode_var, value="centerline", command=self.update_parameters_visibility).pack(anchor="w")
-        ttk.Checkbutton(frame, text="Només la silueta exterior (tall làser)", variable=self.silhouette_var, command=self.preview_image).pack(anchor="w", pady=(5, 0))
+        ttk.Checkbutton(frame, text="Només la silueta exterior (tall làser i extrusió)", variable=self.silhouette_var, command=self.preview_image).pack(anchor="w", pady=(5, 0))
 
     def _create_preprocessing_section(self):
         frame = ttk.Frame(self.control_frame)
@@ -214,10 +214,17 @@ class Sketch2SVGApp:
         self.units_frame = ttk.Frame(self.control_frame)
         self.units_frame.pack(fill="x", pady=5, anchor="w")
         self._add_section_title(self.units_frame, "Mida del resultat")
-        self.add_slider(self.units_frame, "Resolució (DPI):", self.dpi_var, 50, 600, 1, "Píxels per polzada de la foto. Només s'usa si l'escala és «Cap».")
         ttk.Label(self.units_frame, text="Mida final:").pack(anchor="w")
         opcions = list(nucli.ESCALES)
-        ttk.OptionMenu(self.units_frame, self.scale_preset_var, opcions[0], *opcions).pack(fill="x")
+        ttk.OptionMenu(self.units_frame, self.scale_preset_var, self.scale_preset_var.get(), *opcions,
+                       command=lambda _: self.preview_image()).pack(fill="x")
+        f = ttk.Frame(self.units_frame)
+        f.pack(fill="x", pady=(8, 0))
+        ttk.Label(f, text="Detall del contorn:").pack(anchor="w")
+        ttk.OptionMenu(f, self.detail_var, self.detail_var.get(), *nucli.DETALLS,
+                       command=lambda _: self.preview_image()).pack(fill="x")
+        ToolTip(f, "Normal: precisió de 0,1 mm, prou per a impressora 3D i làser, i fitxers lleugers.\n"
+                   "Fi: 0,05 mm. Màxim: tota la resolució de la foto (fitxers pesats).")
 
     def _create_actions_section(self):
         frame = ttk.Frame(self.control_frame)
@@ -332,7 +339,7 @@ class Sketch2SVGApp:
     def _process_and_update_thread(self, path, params, mostra_vectors, generacio):
         img, camins, error = None, [], None
         try:
-            img = nucli.preprocessa(nucli.llegeix_gris(path), params)
+            img = nucli.redueix_al_detall(nucli.preprocessa(nucli.llegeix_gris(path), params), params)
             if mostra_vectors:
                 camins, _ = nucli.vectoritza(img, params)
         except nucli.Sketch2SVGError as e:
@@ -392,22 +399,24 @@ class Sketch2SVGApp:
                          daemon=True).start()
 
     def _export_batch_thread(self, fitxers, params, preset, output_dir):
-        fets, errors = 0, []
+        fets, errors, avisos = 0, [], []
         for i, path in enumerate(fitxers, 1):
             nom = os.path.basename(path)
             self.master.after(0, self.set_status, f"Exportant {i}/{len(fitxers)}: {nom}")
             try:
-                nucli.processa_fitxer(path, params, output_dir, preset)
+                nucli.processa_fitxer(path, params, output_dir, preset, avisos)
                 fets += 1
             except Exception as e:  # noqa: BLE001
                 errors.append(f"{nom}: {e}")
-        self.master.after(0, self._finish_batch_export, fets, len(fitxers), output_dir, errors)
+        self.master.after(0, self._finish_batch_export, fets, len(fitxers), output_dir, errors, avisos)
 
-    def _finish_batch_export(self, fets, total, out_dir, errors):
+    def _finish_batch_export(self, fets, total, out_dir, errors, avisos=()):
         self.export_button.config(state=tk.NORMAL)
         self.set_status(f"Exportació acabada: {fets}/{total} imatges a {out_dir}")
         if errors:
             messagebox.showwarning(TITOL, "Algunes imatges no s'han pogut convertir:\n\n" + "\n".join(errors[:10]))
+        if avisos:
+            messagebox.showinfo(TITOL, "Revisa aquestes imatges:\n\n" + "\n\n".join(avisos[:10]))
         if fets:
             try:
                 if sys.platform == "win32":

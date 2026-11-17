@@ -15,15 +15,17 @@ Pensat per a aules i tallers *maker*: l'alumnat dibuixa en paper, el docent fa l
 
 | Perfil d'ús | Mode | Fitxers que genera | Per a què |
 |---|---|---|---|
-| Dibuix / Modelat 3D (Extrusió) | Contorn | SVG | Importar a Fusion 360, Tinkercad, Inkscape… |
+| Dibuix / Modelat 3D (Extrusió) | Contorn (silueta plena) | SVG | Peça sencera per extruir a Fusion 360, Tinkercad… (30 mm d'amplada per defecte) |
 | Làser - Tall (CUT) | Contorn (només silueta) | SVG + DXF (capa `CUT`, vermell) | Tallar la peça sencera per la vora exterior |
 | Làser - Marcat / Gravat (SCORE) | Traç únic | SVG + DXF (capa `SCORE`, blau) | Gravar les línies del dibuix |
 | Brodat (Running Stitch) | Traç únic | SVG + CSV de puntades | Brodadores o plotters que llegeixen coordenades |
 
 - **Contorn:** ressegueix les vores de cada traç (amb [potrace](https://potrace.sourceforge.net/)). Dona corbes suaus i formes tancades.
 - **Traç únic:** troba la línia central de cada traç, com si es repassés amb un sol bolígraf.
-- **Mida real:** tria «Amplada 20 mm», «Alçada 30 mm»… i el dibuix (no el full) surt directament a aquesta mida, o fes servir els DPI de la foto.
-- **Silueta per al tall:** el perfil de tall només talla la vora exterior de cada forma; les línies de dins es graven amb el perfil de marcat.
+- **Mida real:** el dibuix (no el full) surt per defecte a 30 mm d'amplada. Al selector pots triar altres amplades o alçades, de 20 a 100 mm.
+- **Fitxers lleugers:** el *Detall* «Normal» dona una precisió de 0,1 mm, el límit real d'una impressora 3D o d'una làser, i fa fitxers que Fusion 360 o Tinkercad extrueixen sense patir. «Fi» (0,05 mm) i «Màxim» (tota la foto) hi són per si cal més detall.
+- **Silueta per al tall i l'extrusió:** els perfils de tall i d'extrusió donen la vora exterior de cada forma, plena; les línies de dins es graven amb el perfil de marcat. Si la vora surt a trossos (llapis fluix), el programa uneix els trossos propers, i si tot i així no es tanca, avisa.
+- **Neteja:** no compten els dibuixos tallats per la vora de la foto ni les taques petites lluny del dibuix.
 - **Per lots:** converteix tota una carpeta d'esbossos d'un sol cop.
 
 ![Captura de la finestra del programa](docs/captura.png)
@@ -43,6 +45,7 @@ Pensat per a aules i tallers *maker*: l'alumnat dibuixa en paper, el docent fa l
 - **Es perden traços fins o fluixos:** comprova que la binarització sigui *Combinada* i baixa el *Contrast (adapt.)*.
 - **La foto té ombres:** puja la *Correcció d'il·luminació*.
 - **Dibuix clar sobre fons fosc (pissarra):** activa *Inverteix colors*.
+- **Per extruir o tallar, millor retolador que llapis.** Una vora de llapis fluix surt a trossos; amb retolador negre de punta fina surt sencera.
 - **Per tallar amb làser, la forma ha d'estar tancada.** Si a la vista prèvia una part surt amb doble línia, és que el traç no arriba a tocar: repassa'l amb el llapis o el retolador i torna a fer la foto.
 
 ## Descarrega i fes doble clic

@@ -21,3 +21,6 @@ build/
 dist/
 *.spec
 !sketch2svg.spec
+
+# potrace descarregat per provar el programa en local (els executables el porten a dins)
+potrace.exe

@@ -32,14 +32,17 @@ def params(preset="Dibuix / Modelat 3D (Extrusió)", **canvis):
 
 def desa(tmp_path, img, nom="esbos.png"):
     path = os.path.join(tmp_path, nom)
-    cv2.imwrite(path, img)
+    # cv2.imwrite no accepta accents a la ruta a Windows: codifiquem i desem.
+    ok, buf = cv2.imencode(os.path.splitext(nom)[1], img)
+    assert ok
+    buf.tofile(path)
     return path
 
 
 # --- Preprocés -------------------------------------------------------------
 
 def test_preprocessa_deixa_el_traç_en_blanc():
-    binaria = nucli.preprocessa(esbos(), params())
+    binaria = nucli.preprocessa(esbos(), params(silhouette_var=False))
     assert binaria.dtype == np.uint8
     assert set(np.unique(binaria)) <= {0, 255}
     assert binaria[150, 50] == 255      # sobre el cercle
@@ -82,16 +85,16 @@ def test_imatge_il_legible(tmp_path):
 
 # --- Escala ----------------------------------------------------------------
 
-def test_escala_per_dpi():
-    assert nucli.mm_per_px(100, 50, 254, "Cap") == pytest.approx(0.1)
+def test_escala_desconeguda_fa_servir_la_de_defecte():
+    assert 400 * nucli.mm_per_px(400, 300, "Cap") == pytest.approx(30)
 
 
 def test_escala_amplada_fixa():
-    assert 400 * nucli.mm_per_px(400, 300, 96, "Amplada 20mm") == pytest.approx(20)
+    assert 400 * nucli.mm_per_px(400, 300, "Amplada 20mm") == pytest.approx(20)
 
 
 def test_escala_alcada_fixa():
-    assert 300 * nucli.mm_per_px(400, 300, 96, "Alçada 30mm") == pytest.approx(30)
+    assert 300 * nucli.mm_per_px(400, 300, "Alçada 30mm") == pytest.approx(30)
 
 
 # --- Traç únic ---------------------------------------------------------------
@@ -190,11 +193,11 @@ def test_tall_laser_genera_svg_i_dxf(tmp_path):
     creats = nucli.processa_fitxer(path, params(preset), str(tmp_path / "sortida"), preset)
     assert [os.path.splitext(c)[1] for c in creats] == [".svg", ".dxf"]
     svg = ET.parse(creats[0]).getroot()
-    assert svg.get("width") == "20.000mm"
+    assert svg.get("width") == "30.000mm"
     assert 'stroke="#FF0000"' in open(creats[0], encoding="utf-8").read()
     linies = ezdxf.readfile(creats[1]).modelspace().query("LWPOLYLINE")
     xs = [pt[0] for l in linies for pt in l.get_points()]
-    assert 0 <= min(xs) and max(xs) <= 20
+    assert 0 <= min(xs) and max(xs) <= 30.01
 
 
 # --- Presets -------------------------------------------------------------------
@@ -278,3 +281,128 @@ def test_textura_del_paper_no_fa_soroll(preset):
     files, columnes = np.nonzero(binaria)
     assert files.min() >= 240 and files.max() <= 360
     assert columnes.min() >= 240 and columnes.max() <= 360
+
+
+# --- Proves amb fotos reals (2026-11-17): peces per extruir --------------------
+
+def test_extrusio_dona_la_peça_plena():
+    """El perfil d'extrusió ha de donar la silueta plena, no les dues vores del traç."""
+    img = np.full((300, 300), 235, np.uint8)
+    cv2.circle(img, (150, 150), 100, 30, 5)
+    p = params("Dibuix / Modelat 3D (Extrusió)")
+    binaria = nucli.preprocessa(img, p)
+    assert binaria[150, 150] == 255
+
+
+def test_treu_el_dibuix_tallat_per_la_vora():
+    img = np.full((400, 400), 235, np.uint8)
+    cv2.circle(img, (200, 180), 60, 30, 5)            # el dibuix
+    cv2.circle(img, (200, 420), 60, 30, 5)            # el del costat, tallat a baix
+    binaria = nucli.preprocessa(img, params(silhouette_var=False))
+    assert binaria[120, 200] == 255
+    assert binaria[365, 200] == 0
+
+
+def test_no_treu_res_si_el_dibuix_omple_la_foto():
+    img = np.full((200, 200), 235, np.uint8)
+    cv2.line(img, (0, 100), (199, 100), 30, 5)
+    binaria = nucli.preprocessa(img, params(silhouette_var=False))
+    assert binaria[100, 100] == 255
+
+
+def cercle_discontinu(mida=600, radi=200, buit_graus=3, tros_graus=20):
+    img = np.full((mida, mida), 235, np.uint8)
+    for inici in range(0, 360, tros_graus + buit_graus):
+        cv2.ellipse(img, (mida // 2, mida // 2), (radi, radi), 0, inici, inici + tros_graus, 30, 5)
+    return img
+
+
+def test_silueta_tanca_una_linia_discontinua():
+    """Llapis fluix: la vora surt a trossos i, tot i així, la peça ha de sortir plena."""
+    binaria = nucli.preprocessa(cercle_discontinu(), params("Làser - Tall (CUT)"))
+    assert binaria[300, 300] == 255
+    # Sense unir extrems (només tancant), aquests forats deixen la forma oberta.
+    traç = nucli.preprocessa(cercle_discontinu(), params("Làser - Tall (CUT)", silhouette_var=False))
+    assert nucli.silueta(traç, dist_unio=0)[300, 300] == 0
+
+
+def test_no_uneix_les_puntes_de_les_potes():
+    """Dues potes que surten del mateix cos no s'han de tancar entre elles."""
+    img = np.full((400, 400), 235, np.uint8)
+    cv2.circle(img, (200, 150), 60, 30, 5)
+    cv2.line(img, (170, 205), (150, 330), 30, 5)
+    cv2.line(img, (230, 205), (250, 330), 30, 5)
+    binaria = nucli.preprocessa(img, params("Làser - Tall (CUT)"))
+    assert binaria[150, 200] == 255   # el cos, ple
+    assert binaria[310, 200] == 0     # entre les potes, buit
+
+
+def test_avisa_si_la_forma_no_es_tanca(tmp_path):
+    img = np.full((600, 600), 235, np.uint8)
+    cv2.ellipse(img, (300, 300), (200, 200), 0, 0, 250, 30, 5)   # gairebé mitja volta oberta
+    path = desa(str(tmp_path), img)
+    preset = "Làser - Marcat / Gravat (SCORE)"
+    avisos = []
+    nucli.processa_fitxer(path, params(preset, silhouette_var=True), str(tmp_path / "o"), preset, avisos)
+    assert any("no es tanca" in a for a in avisos)
+
+
+# --- Mida i detall (2026-11-17) -------------------------------------------------
+
+def test_sempre_hi_ha_una_mida():
+    assert "Cap" not in nucli.ESCALES
+    assert config_manager.DEFAULT_STANDARD_SETTINGS["scale_preset_var"] == "Amplada 30mm"
+    for nom in config_manager.PRESETS:
+        assert config_manager.get_preset_settings(nom)["scale_preset_var"] == "Amplada 30mm"
+        assert config_manager.get_preset_settings(nom)["detail_var"] == "Normal"
+
+
+def test_llistes_de_config_coincideixen_amb_el_nucli():
+    assert tuple(nucli.ESCALES) == config_manager.ESCALES_VALIDES
+    assert tuple(nucli.DETALLS) == config_manager.DETALLS_VALIDS
+
+
+def test_configuracio_antiga_amb_cap(tmp_path, monkeypatch):
+    import json
+    fitxer = tmp_path / "cfg.json"
+    fitxer.write_text(json.dumps({"scale_preset_var": "Cap", "dpi_var": 96}))
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", str(fitxer))
+    assert config_manager.load_config()["scale_preset_var"] == "Amplada 30mm"
+
+
+def test_detall_normal_redueix_a_10_px_per_mm():
+    binaria = np.zeros((3000, 3000), np.uint8)
+    cv2.circle(binaria, (1500, 1500), 1200, 255, -1)   # 2401 px d'amplada -> 30 mm
+    reduida = nucli.redueix_al_detall(binaria, params("Làser - Tall (CUT)"))
+    f, c = np.nonzero(reduida)
+    assert c.max() - c.min() + 1 == pytest.approx(300, abs=3)
+    maxim = nucli.redueix_al_detall(binaria, params("Làser - Tall (CUT)", detail_var="Màxim"))
+    assert maxim.shape == binaria.shape
+
+
+def test_detall_no_toca_el_traç_unic():
+    binaria = np.zeros((3000, 3000), np.uint8)
+    cv2.circle(binaria, (1500, 1500), 1200, 255, 5)
+    p = params("Làser - Marcat / Gravat (SCORE)")
+    assert nucli.redueix_al_detall(binaria, p).shape == binaria.shape
+
+
+@cal_potrace
+def test_detall_normal_dona_molts_menys_segments():
+    """Vora amb gra, com una foto de mòbil: Normal ha de donar molts menys segments."""
+    from svg.path import Move, parse_path
+    rng = np.random.default_rng(3)
+    img = np.full((2400, 2400), 235, np.uint8)
+    angles = np.linspace(0, 2 * np.pi, 2000, endpoint=False)
+    radis = 900 + rng.normal(0, 3, angles.size)
+    punts = np.column_stack([1200 + radis * np.cos(angles),
+                             1200 + radis * np.sin(angles)]).astype(np.int32)
+    cv2.polylines(img, [punts], True, 30, 8)
+    segments = {}
+    for detall in ("Normal", "Màxim"):
+        p = params("Dibuix / Modelat 3D (Extrusió)", detail_var=detall)
+        b = nucli.redueix_al_detall(nucli.preprocessa(img, p), p)
+        camins_d, _, _ = nucli.traca_contorn(b)
+        segments[detall] = sum(1 for d in camins_d for sg in parse_path(d)
+                               if not isinstance(sg, Move))
+    assert segments["Normal"] * 3 < segments["Màxim"]
